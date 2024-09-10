@@ -22,15 +22,66 @@ This is an R Markdown document that I did to upload the first homework!
 
 # Loading the file
 
-```{r}
+```{r load}
 data  <- readr::read_tsv('/Users/anastasiagorskova/Downloads/data_tsv.tsv') 
 data %>% glimpse()
 ```
+# Summary
 
-## Раздел 7. Пакет Flextable
+```{r summary}
+psych::describe(data, na.rm = TRUE, skew = FALSE, ranges = TRUE)
+```
 
+# Tibble
 
-```{r}
+```{r tibble}
+tibble(var_first = 1:10,
+       var_second = var_first*var_first)
+```
+
+# Dplyr
+
+Эта функция помогает просто добавить столбец с заранее заданными значениями
+```{r dplyr}
+data %>% add_column(column_name = 1:100, .before = NULL, .after = NULL)
+```
+А для добавления строк нужно вручную задавать имена и значения для каждой переменной
+
+# Mutate
+
+```{r mutate}
+
+data %>%
+  dplyr::mutate(ID = dplyr::row_number() )
+
+```
+
+# Bind cols
+Мы можем сделать из двух и более таблиц одну, склеив их столбцы
+
+```{r bind}
+data_1 <- tibble(var_1 = 1:8) %>% dplyr::mutate(`id` = dplyr::row_number())
+
+data_2 <- tibble(var_2 = rnorm(10)) %>% dplyr::mutate('Subject ID' = dplyr::row_number())
+
+data_1 %>% 
+  dplyr::left_join(data_2, by = c(id = 'Subject ID'))
+```
+
+Оставляет все возможные сочетания датасетов:
+
+```{r bind 2}
+data_1 <- tibble(var_1 = 1:8) %>% dplyr::mutate(`id` = dplyr::row_number())
+
+data_2 <- tibble(var_2 = rnorm(10)) %>% dplyr::mutate('Subject ID' = dplyr::row_number())
+
+data_1 %>% 
+  dplyr::full_join(data_2, by = c(id = 'Subject ID'))
+```
+
+# Flextable
+
+```{r flextable}
 stats <- list(
   `_N_subjects` = ~length(.x) %>% as.character(),
   `_N_entries` = ~sum(!is.na(.x)) %>% as.character(),
