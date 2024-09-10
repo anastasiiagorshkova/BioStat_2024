@@ -1,0 +1,66 @@
+---
+title: "Домашка - введение в автоматизацию"
+author: "Анастасия Горшкова"
+date: "2024-09-10"
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(flextable)
+library(psych)
+library(readr)
+```
+
+## R Markdown
+
+This is an R Markdown document that I did to upload the first homework!
+
+# Loading the file
+
+```{r}
+data  <- readr::read_tsv('/Users/anastasiagorskova/Downloads/data_tsv.tsv') 
+data %>% glimpse()
+```
+
+## Раздел 7. Пакет Flextable
+
+
+```{r}
+stats <- list(
+  `_N_subjects` = ~length(.x) %>% as.character(),
+  `_N_entries` = ~sum(!is.na(.x)) %>% as.character(),
+  `_No_data` = ~sum(is.na(.x)) %>% as.character(),
+  `_Mean` = ~ifelse(sum(!is.na(.x)) == 0, "NA*", mean(.x, na.rm = T) 
+                  %>% round(2) 
+                  %>% as.character()),
+  `_Standard_Deviation` = ~ifelse(sum(!is.na(.x)) < 3, "NA*", sd(.x, na.rm = T) 
+                                %>% round(2) 
+                                %>% as.character()),
+  `_CI_for_Mean` = ~sd(.x, na.rm = T)
+                      %>% round(2) 
+                      %>% as.character(),
+  `_Min - Max` = ~ifelse(sum(!is.na(.x)) == 0, "NA*", paste0(min(.x, na.rm = T) %>% round(2), 
+                                                         " - ", max(.x, na.rm = T) %>% round(2))),
+  `_Q1 - Q3` = ~ifelse(sum(!is.na(.x)) == 0, "NA*", paste0(quantile(.x, .25, na.rm = T) %>% round(2), 
+                                                         " - ", quantile(.x, .75, na.rm = T) %>% round(2)))
+
+)
+
+data %>% 
+  select(`Группа`, where(is.numeric)) %>% 
+  group_by(`Группа`) %>% 
+  summarise(across(where(is.numeric), stats)) %>% 
+  pivot_longer(!`Группа`) %>% 
+  separate(name, into = c('Parameter', "Statistic"), sep="__") %>% 
+  rename(Value = value, Group = `Группа`) %>% 
+  flextable() %>% 
+  theme_apa() %>% 
+  merge_v(c("Group", "Parameter"))
+```
+
+
