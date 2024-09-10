@@ -113,5 +113,5 @@ data %>%
   theme_apa() %>% 
   merge_v(c("Group", "Parameter"))
 ```
-#Конец!
+#Конец
 
