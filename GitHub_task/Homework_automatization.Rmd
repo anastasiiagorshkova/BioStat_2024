@@ -23,7 +23,7 @@ This is an R Markdown document that I did to upload the first homework!
 # Loading the file
 
 ```{r load}
-data  <- readr::read_tsv('/Users/anastasiagorskova/Downloads/data_tsv.tsv') 
+data  <- readr::read_tsv('https://stepik.org/media/attachments/lesson/790863/data_tsv.tsv') 
 data %>% glimpse()
 ```
 # Summary
