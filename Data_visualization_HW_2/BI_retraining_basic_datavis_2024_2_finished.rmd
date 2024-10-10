@@ -1,0 +1,1000 @@
+---
+title: "Data_visualization_HW_2"
+author: "Anastasiia Gorshkova based on the lectures by B.V. Sotnikov"
+date: "2024-10-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, error = FALSE, fig.width=16, fig.height=10)
+
+library(tidyverse)
+library(ggpubr)
+```
+
+## Загрузка данных
+
+```{r}
+hogwarts <- read_csv("data/hogwarts_2024.csv")
+hogwarts |> head()
+```
+
+### Проверка структуры данных
+
+```{r}
+hogwarts |> glimpse()
+
+# Changing some variables type to factors
+hogwarts <- hogwarts |> mutate(
+  across(c(house, course, sex, wandCore, bloodStatus), ~ as.factor(.x))
+)
+```
+
+### Поиск пропущенных значений
+
+```{r}
+sum(is.na(hogwarts))
+```
+
+### Сводка по данным
+
+```{r}
+hogwarts |> 
+  summary()
+``` 
+
+
+### Пересоздание theme_custom
+
+```{r}
+theme_custom <- theme(
+    panel.background = element_rect(fill = "white"),
+    plot.title = element_text(size = 30, hjust = 0.5),
+    plot.subtitle = element_text(size = 25, hjust = 0.5),
+    strip.text = element_text(size = 20),
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 25),
+    legend.title = element_text(size = 25),
+    legend.text = element_text(size = 20)
+  )
+
+# А еще мы создаем функцию для стандартной ошибки среднего
+se <- function(x){
+  sd(x, na.rm=TRUE)/sqrt(length(x))
+}
+```
+
+## Диаграммы рассеяния (скаттерплоты)
+
+### 1. Постройте скаттерплот, визуализирующий связь между суммарным баллом студента за год и оценкой за экзамен по травологии.
+
+Добавьте на график линию тренда. Удалите доверительную область и сделайте линию
+прямой. Подумайте, как избежать того, чтобы записать одни и те же
+координаты x и y дважды. Проинтерпретируйте график. (1 б.)
+
+```{r}
+hogwarts |> 
+ ggplot(aes(x = `Herbology exam`, y = `result`)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(
+    x = "Оценка на экзамене по Травологии",
+    y = "Общий результат",
+    title = "Зависимость общего результата от оценки по Травологии"
+  ) +
+  annotate("text", 
+           x = 75, y = 150, 
+           label = "Линия тренда", 
+           color = "blue", 
+           size = 7,
+           hjust = 0) +
+  theme_custom
+
+```
+
+Интерпретация: наклон линии вверх указывает на положительную корреляцию: чем выше оценка на экзамене по травологии, тем выше общий результат студента. О мере взаимосвязи (силе корреляции) мы судить из графика не можем, так как для этого необходимо применение критерия, но скорее всего связь будет достаточно выраженная.
+
+###  2. Отобразите на одном графике скаттерплоты для экзаменов по травологии, магловедению, прорицаниям и зельеварению. 
+
+На графике так же должна присутствовать
+линия тренда с характеристиками, аналогичными тем, что были в пункте 1.
+Раскрасьте точки на графике в разные цвета, в соответствии с
+факультетами. Используйте стандартные цвета факультетов (как в
+лекционных rmd). Проинтерпретируйте график. (1 б). Если вы создадите
+график из этого пункта, используя только пакеты семейства tidyverse, и не
+привлекая дополнительные средства, вы получите дополнительные 0.5 б.
+
+```{r}
+theme_custom2 <-  theme(
+    panel.background = element_rect(fill = "white"),
+    plot.title = element_text(size = 22, hjust = 0.5),
+    plot.subtitle = element_text(size = 20, hjust = 0.5),
+    strip.text = element_text(size = 15),
+    axis.text = element_text(size = 15),
+    axis.title = element_text(size = 15),
+    legend.title = element_text(size = 15),
+    legend.text = element_text(size = 15),
+    legend.position = c(0.15, 0.8)
+  )
+
+# Зависимость общего результата от оценки по Травологии
+HerbologyResults <- hogwarts |> 
+  ggplot(aes(x = `Herbology exam`, y = `result`)) +
+  geom_point(aes(color = house, alpha = 0.6)) +
+  geom_smooth(method = "lm", se = FALSE, color = "black") + 
+  scale_color_manual(
+    name = "Факультет",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25"
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин")) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от Травологии"
+  ) +
+  guides(alpha = "none") +
+  theme_custom2
+# Зависимость общего результата от оценки по Магловедению
+MuggleResults <- hogwarts |> 
+  ggplot(aes(x = `Muggle studies exam`, y = `result`)) +
+  geom_point(aes(color = house, alpha = 0.6)) +
+  geom_smooth(method = "lm", se = FALSE, color = "black") + 
+  scale_color_manual(
+    name = "Факультет",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25"
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин")) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от  Магловедению"
+  ) +
+  guides(alpha = "none") +
+  theme_custom2
+# Зависимость общего результата от оценки по Прорицаниям
+DivinationsResults <- hogwarts |> 
+  ggplot(aes(x = `Divinations exam` , y = `result`)) +
+  geom_point(aes(color = house, alpha = 0.6)) +
+  geom_smooth(method = "lm", se = FALSE, color = "black") + 
+  scale_color_manual(
+    name = "Факультет",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25"
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин")) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от Прорицаниям"
+  ) +
+  guides(alpha = "none") +
+  theme_custom2
+# Зависимость общего результата от оценки по Зельеварению
+PotionsResults <- hogwarts |> 
+  ggplot(aes(x = `Potions exam`, y = `result`)) +
+  geom_point(aes(color = house, alpha = 0.6)) +
+  geom_smooth(method = "lm", se = FALSE, color = "black") + 
+  scale_color_manual(
+    name = "Факультет",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25"
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин")) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от Зельеварению"
+  ) +
+  guides(alpha= "none", color= "none") +
+  theme_custom2
+```
+
+### Комбинируем графики
+
+```{r}
+ggarrange(plotlist = list(HerbologyResults, MuggleResults, DivinationsResults, PotionsResults),
+          ncol = 2, 
+          nrow = 2)
+```
+
+
+Примечание: с последнего графика была удалена легенда, так как она мешала восприятию графика
+
+Интерпретация графиков:
+Мы видим, что зависимость общей оценки от оценки по трем предметам, Травологии, Магловедению и Прорицаниям, примерно похожая.
+Есть линейная зависимость оценки по этим предметам от общей оценки. Также студенты Когтеврана группируются в числе лучших, как и по общей успеваемости, так и по успеваемости по отдельным предметам. Студенты Пуффендуя и Гриффиндора группируются равномерно вдоль линии тренда, а студенты Слизерина делятся на две группы: успевающих очень хорошо и успевающих рекордно плохо (даже с отрицательной общей оценкой).
+
+Линейной зависимости оценки по Зельеварению от общей оценки не наблюдается. Также заметно, что в первый квартиль по успеваемости попадают только студенты Слизерина, причем только туда. Это объяснимо известной тягой профессора Снейпа симпатизировать студентам своего факультета и завышать им оценки по своему предмету.
+
+### 3. Видоизмените предыдущий график. 
+
+Сгруппируйте и покрасьте линии
+тренда в соответствии с одной из категориальных переменных (с такой,
+которая подсвечивает одно из наблюдений на предыдущем этапе,
+относящееся ко всем 4-м экзаменам). Постарайтесь избежать коллизий в
+легенде, при этом сохранив и цветовую палитру для раскраски точек по
+факультетам. (1 б.)
+
+С какой переменной? Факультет, пол или начинка палочки?
+
+Допустим для пола:
+
+
+```{r}
+# Зависимость общего результата от оценки по Травологии
+HerbologyResults2 <- hogwarts |> 
+  ggplot(aes(x = `Herbology exam`, y = `result`)) +
+  geom_point(aes(color = house, alpha = 0.6)) +
+  geom_smooth(aes(color = sex), 
+              method = "lm", se = FALSE) +
+  scale_color_manual(
+    name = "Факультет и пол",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25",
+      "male" = "black",
+      "female" = "purple4"   
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин", "Мужской", "Женский")
+  ) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от Травологии"
+  ) +
+  guides(alpha = "none") +
+  theme_custom2
+# Зависимость общего результата от оценки по Магловедению
+MuggleResults2 <- hogwarts |> 
+  ggplot(aes(x = `Muggle studies exam`, y = `result`)) +
+  geom_point(aes(color = house, alpha = 0.6)) +
+geom_smooth(aes(color = sex), 
+              method = "lm", se = FALSE) +
+  scale_color_manual(
+    name = "Факультет и пол",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25",
+      "male" = "black",
+      "female" = "purple4"   
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин", "Мужской", "Женский")
+  ) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от  Магловедению"
+  ) +
+  guides(alpha = "none") +
+  theme_custom2
+# Зависимость общего результата от оценки по Прорицаниям
+DivinationsResults2 <- hogwarts |> 
+  ggplot(aes(x = `Divinations exam` , y = `result`)) +
+  geom_point(aes(color = house, alpha = 0.6)) +
+  geom_smooth(aes(color = sex), 
+              method = "lm", se = FALSE) +
+  scale_color_manual(
+    name = "Факультет и пол",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25",
+      "male" = "black",
+      "female" = "purple4"   
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин", "Мужской", "Женский")
+  ) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от Прорицаниям"
+  ) +
+  guides(alpha = "none") +
+  theme_custom2
+# Зависимость общего результата от оценки по Зельеварению
+PotionsResults2 <- hogwarts |> 
+  ggplot(aes(x = `Potions exam`, y = `result`)) +
+  geom_point(aes(color = house, alpha = 0.6)) +
+  geom_smooth(aes(color = sex), 
+              method = "lm", se = FALSE) +
+  scale_color_manual(
+    name = "Факультет и пол",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25",
+      "male" = "black",
+      "female" = "purple4"   
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин", "Мужской", "Женский")
+  ) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от Зельеварению"
+  ) +
+  guides(alpha= "none", color= "none") +
+  theme_custom2
+
+ggarrange(plotlist = list(HerbologyResults2, MuggleResults2, DivinationsResults2, PotionsResults2),
+          ncol = 2, 
+          nrow = 2)
+```
+
+Примечание: как сделать так, чтобы сохранился color code и у точек, и у линий, и чтобы было две разных легенды - я так и не поняла...
+
+Интерпретация: по трем первым предметам зависимость у мужчин и у женщин однонаправленная, но с разным уклоном: судя по графикам, мальчики получают общие отрицательные оценки, а девочки - нет.
+
+Судя по графику с зельевареньем, группа неуспевающих слизеринцев - исключительно мальчики, а слизеринцы с хорошими итоговыми баллами - исключительно слизеринки.
+
+Проверим гипотезу, изменив точки на графике с зельевареньем в соответствии с полом.
+
+```{r}
+hogwarts |> 
+  ggplot(aes(x = `Potions exam`, y = `result`)) +
+  geom_point(aes(color = house, shape = sex, size = 1, alpha = 0.6)) +
+  geom_smooth(aes(color = sex), 
+              method = "lm", se = FALSE) +
+  scale_color_manual(
+    name = "Факультет и пол",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25",
+      "male" = "black",
+      "female" = "purple4"   
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин", "Мужской", "Женский")
+  ) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от Зельеварению"
+  ) +
+  guides(alpha= "none", size = "none") +
+  theme_custom
+```
+
+Так и оказалось: студенты слизерина разделились на два "облака" по полу и по успеваемости.
+
+Студенты обоих полов с других факультетов не разделяются на видимые детектируемые группы.
+
+Сделаем то же самое для всех предметов.
+
+```{r}
+# Зависимость общего результата от оценки по Травологии
+HerbologyResults3 <- hogwarts |> 
+  ggplot(aes(x = `Herbology exam`, y = `result`)) +
+  geom_point(aes(color = house, shape = sex, alpha = 0.6)) +
+  geom_smooth(aes(color = sex), 
+              method = "lm", se = FALSE) +
+  scale_color_manual(
+    name = "Факультет и пол",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25",
+      "male" = "black",
+      "female" = "purple4"   
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин", "Мужской", "Женский")
+  ) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от Травологии"
+  ) +
+  guides(alpha = "none", shape = "none") +
+  theme_custom2
+# Зависимость общего результата от оценки по Магловедению
+MuggleResults3 <- hogwarts |> 
+  ggplot(aes(x = `Muggle studies exam`, y = `result`)) +
+  geom_point(aes(color = house, shape = sex, alpha = 0.6)) +
+geom_smooth(aes(color = sex), 
+              method = "lm", se = FALSE) +
+  scale_color_manual(
+    name = "Факультет и пол",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25",
+      "male" = "black",
+      "female" = "purple4"   
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин", "Мужской", "Женский")
+  ) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от  Магловедению"
+  ) +
+  guides(alpha = "none", shape = "none") +
+  theme_custom2
+# Зависимость общего результата от оценки по Прорицаниям
+DivinationsResults3 <- hogwarts |> 
+  ggplot(aes(x = `Divinations exam` , y = `result`)) +
+  geom_point(aes(color = house, shape = sex, alpha = 0.6)) +
+  geom_smooth(aes(color = sex), 
+              method = "lm", se = FALSE) +
+  scale_color_manual(
+    name = "Факультет и пол",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25",
+      "male" = "black",
+      "female" = "purple4"   
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин", "Мужской", "Женский")
+  ) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от Прорицаниям"
+  ) +
+  guides(alpha = "none", shape = "none") +
+  theme_custom2
+# Зависимость общего результата от оценки по Зельеварению
+PotionsResults3 <- hogwarts |> 
+  ggplot(aes(x = `Potions exam`, y = `result`)) +
+  geom_point(aes(color = house, shape = sex, alpha = 0.6)) +
+  geom_smooth(aes(color = sex), 
+              method = "lm", se = FALSE) +
+  scale_color_manual(
+    name = "Факультет и пол",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25",
+      "male" = "black",
+      "female" = "purple4"   
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин", "Мужской", "Женский")
+  ) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от Зельеварению"
+  ) +
+  guides(alpha= "none", color= "none", shape = "none") +
+  theme_custom2
+
+ggarrange(plotlist = list(HerbologyResults3, MuggleResults3, DivinationsResults3, PotionsResults3),
+          ncol = 2, 
+          nrow = 2)
+```
+
+
+Другая гипотеза: происхождение может влиять на успеваемость
+
+```{r}
+# Зависимость общего результата от оценки по Травологии
+HerbologyResults2 <- hogwarts |> 
+  ggplot(aes(x = `Herbology exam`, y = `result`)) +
+  geom_point(aes(color = house, alpha = 0.6)) +
+  geom_smooth(aes(color = wandCore), 
+              method = "lm", se = FALSE) +
+  scale_color_manual(
+    name = "Факультет и пол",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25",
+      "unicorn hair" = "black",
+      "phoenix feather" = "purple4",
+      "dragon heartstring" = "gray60"
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин", "Единорог", "Феникс", "Дракон")
+  ) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от Травологии"
+  ) +
+  guides(alpha = "none") +
+  theme_custom2
+# Зависимость общего результата от оценки по Магловедению
+MuggleResults2 <- hogwarts |> 
+  ggplot(aes(x = `Muggle studies exam`, y = `result`)) +
+  geom_point(aes(color = house, alpha = 0.6)) +
+geom_smooth(aes(color = wandCore), 
+              method = "lm", se = FALSE) +
+  scale_color_manual(
+    name = "Факультет и пол",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25",
+      "unicorn hair" = "black",
+      "phoenix feather" = "purple4",
+      "dragon heartstring" = "gray60"
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин", "Единорог", "Феникс", "Дракон")
+  ) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от  Магловедению"
+  ) +
+  guides(alpha = "none") +
+  theme_custom2
+# Зависимость общего результата от оценки по Прорицаниям
+DivinationsResults2 <- hogwarts |> 
+  ggplot(aes(x = `Divinations exam` , y = `result`)) +
+  geom_point(aes(color = house, alpha = 0.6)) +
+  geom_smooth(aes(color = wandCore), 
+              method = "lm", se = FALSE) +
+  scale_color_manual(
+    name = "Факультет и пол",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25",
+      "unicorn hair" = "black",
+      "phoenix feather" = "purple4",
+      "dragon heartstring" = "gray60"
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин", "Единорог", "Феникс", "Дракон")
+  ) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от Прорицаниям"
+  ) +
+  guides(alpha = "none") +
+  theme_custom2
+# Зависимость общего результата от оценки по Зельеварению
+PotionsResults2 <- hogwarts |> 
+  ggplot(aes(x = `Potions exam`, y = `result`)) +
+  geom_point(aes(color = house, alpha = 0.6)) +
+  geom_smooth(aes(color = wandCore), 
+              method = "lm", se = FALSE) +
+  scale_color_manual(
+    name = "Факультет и пол",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25",
+      "unicorn hair" = "black",
+      "phoenix feather" = "purple4",
+      "dragon heartstring" = "gray60"
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин", "Единорог", "Феникс", "Дракон")
+  ) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от Зельеварению"
+  ) +
+  guides(alpha= "none", color= "none") +
+  theme_custom2
+
+ggarrange(plotlist = list(HerbologyResults2, MuggleResults2, DivinationsResults2, PotionsResults2),
+          ncol = 2, 
+          nrow = 2)
+```
+
+Какой-либо интересной зависимости обнаружено не было.
+
+Еще гипотеза: материал сердцевины волшебной палочки влияет на успеваемость
+
+```{r}
+# Зависимость общего результата от оценки по Травологии
+HerbologyResults2 <- hogwarts |> 
+  ggplot(aes(x = `Herbology exam`, y = `result`)) +
+  geom_point(aes(color = house, alpha = 0.6)) +
+  geom_smooth(aes(color = bloodStatus), 
+              method = "lm", se = FALSE) +
+  scale_color_manual(
+    name = "Факультет и пол",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25",
+      "half-blood" = "black",
+      "muggle-born" = "purple4",
+      "pure-blood" = "gray60"
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин", "Полукровки", "Маглорожд", "Чистокровные")
+  ) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от Травологии"
+  ) +
+  guides(alpha = "none") +
+  theme_custom2
+# Зависимость общего результата от оценки по Магловедению
+MuggleResults2 <- hogwarts |> 
+  ggplot(aes(x = `Muggle studies exam`, y = `result`)) +
+  geom_point(aes(color = house, alpha = 0.6)) +
+  geom_smooth(aes(color = bloodStatus), 
+              method = "lm", se = FALSE) +
+  scale_color_manual(
+    name = "Факультет и пол",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25",
+      "half-blood" = "black",
+      "muggle-born" = "purple4",
+      "pure-blood" = "gray60"
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин", "Полукровки", "Маглорожд", "Чистокровные")
+  ) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от  Магловедению"
+  ) +
+  guides(alpha = "none") +
+  theme_custom2
+# Зависимость общего результата от оценки по Прорицаниям
+DivinationsResults2 <- hogwarts |> 
+  ggplot(aes(x = `Divinations exam` , y = `result`)) +
+  geom_point(aes(color = house, alpha = 0.6)) +
+  geom_smooth(aes(color = bloodStatus), 
+              method = "lm", se = FALSE) +
+  scale_color_manual(
+    name = "Факультет и пол",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25",
+      "half-blood" = "black",
+      "muggle-born" = "purple4",
+      "pure-blood" = "gray60"
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин", "Полукровки", "Маглорожд", "Чистокровные")
+  ) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от Прорицаниям"
+  ) +
+  guides(alpha = "none") +
+  theme_custom2
+# Зависимость общего результата от оценки по Зельеварению
+PotionsResults2 <- hogwarts |> 
+  ggplot(aes(x = `Potions exam`, y = `result`)) +
+  geom_point(aes(color = house, alpha = 0.6)) +
+  geom_smooth(aes(color = bloodStatus), 
+              method = "lm", se = FALSE) +
+  scale_color_manual(
+    name = "Факультет и пол",
+    values = c(
+      "Gryffindor" = "#C50000", 
+      "Hufflepuff" = "#ECB939", 
+      "Ravenclaw" = "#41A6D9", 
+      "Slytherin" = "#1F5D25",
+      "half-blood" = "black",
+      "muggle-born" = "purple4",
+      "pure-blood" = "gray60"
+    ),
+    labels = c("Гриффиндор", "Пуффендуй", "Когтевран", "Слизерин", "Полукровки", "Маглорожд", "Чистокровные")
+  ) +
+  labs(
+    x = "Оценка на экзамене",
+    y = "Общий результат",
+    title = "Зависимость общей оценки от Зельеварению"
+  ) +
+  guides(alpha= "none", color= "none") +
+  theme_custom2
+
+ggarrange(plotlist = list(HerbologyResults2, MuggleResults2, DivinationsResults2, PotionsResults2),
+          ncol = 2, 
+          nrow = 2)
+```
+
+Тоже как будто бы ничего интересного
+
+
+## geom_col и вещи вокруг него
+
+### 1. Постройте барплот (столбиковую диаграмму) распредления набранных баллов за первый семестр (с 1-й по 17-ю неделю включительно) у студентов разного происхождения. 
+
+Выдвиньте гипотезу (или гипотезы), почему распределение получилось именно таким. (1 б.)
+
+```{r}
+bloodResult <- hogwarts |> 
+  group_by(bloodStatus) |> 
+  summarise(
+    bloodTotalPoints = sum(week_1, week_2, week_3, week_4, week_5, week_6, 
+                           week_7, week_8, week_9, week_10, week_11, 
+                           week_12, week_13, week_14, week_15, week_16, 
+                           week_17),
+    count = n()  # Добавляем количество строк для каждой группы
+  )
+
+ggplot(bloodResult)+
+  geom_col(aes(x = fct_reorder(bloodStatus, bloodTotalPoints, .desc = TRUE), 
+               y = bloodTotalPoints,
+               fill = bloodStatus))+
+ scale_fill_manual(values = c("half-blood" = "gray10", 
+                             "muggle-born" = "gray60", 
+                             "pure-blood" = "gray80"))+
+  theme_custom
+```
+
+
+Гипотеза: так как эта величина не удельная (баллы на человека), а суммарная, этот график может отражать лишь количество студентов различного происхождения.
+
+
+### 2. Модифицируйте предыдущий график – 
+отсортируйте столбцы в порядке убывания суммы баллов. Добавьте на график текстовые метки,
+отражающие число студентов каждого происхождения. Попробуйте
+использовать для этой задачи не geom_text, а geom_label. Настройте
+внешний вид geom_label по своему усмотрению. Поправьте название оси.
+Проинтерпретируйте график. Соотносится ли интерпретация с вашей
+гипотезой из пункта 1? (1 б.)
+
+```{r}
+ggplot(bloodResult) +
+  geom_col(aes(x = fct_reorder(bloodStatus, bloodTotalPoints, .desc = TRUE), 
+               y = bloodTotalPoints,
+               fill = bloodStatus)) +
+  geom_text(
+    aes(x = fct_reorder(bloodStatus, bloodTotalPoints, .desc = TRUE), 
+        label = count, 
+        y = bloodTotalPoints + 10),
+    position = position_dodge(0.9),
+    vjust = 0,
+    size = 10
+  ) +
+  scale_fill_manual(values = c("half-blood" = "gray10", 
+                                "muggle-born" = "gray60", 
+                                "pure-blood" = "gray80"))+
+  labs(
+    x = "Происхождение",
+    y = "Сумма баллов",
+    title = "Сумма баллов в зависимости от происхождения",
+    subtitle = "Цифры вверху столбцов обозначают число студентов"
+  ) +
+  theme_custom
+
+```
+
+
+Гипотеза подтвердилась: полукровки действительно набрали больше всех баллов потому что их просто больше всего.
+
+
+### 3. И снова измените график – 
+добавьте на него разбивку не только по
+происхождению, но и по полу. Раскрасьте столбцы по происхождению.
+Сделайте подписи к столбцам читаемыми. Дайте графику название,
+измените, если требуется, название осей. Сделайте шаг для оси, на
+которой отображены очки, через каждую тысячу баллов. Разместите
+текстовые метки по правому краю графика. Настройте график таким
+образом, чтобы метки были видны целиком и не обрезались. Сохраните
+график на устройство.(1.5 б.)
+
+
+```{r}
+library(dplyr)
+```
+
+```{r}
+bloodsexResult <- hogwarts |> 
+  group_by(bloodStatus, sex) |> 
+  summarise(
+    bloodsexTotalPoints = sum(week_1, week_2, week_3, week_4, week_5, week_6, 
+                           week_7, week_8, week_9, week_10, week_11, 
+                           week_12, week_13, week_14, week_15, week_16, 
+                           week_17),
+    count2 = n())|> 
+  ungroup()
+
+
+ggplot(bloodsexResult) +
+  geom_col(aes(x = fct_reorder(bloodStatus, bloodsexTotalPoints, .desc = TRUE), 
+               y = bloodsexTotalPoints,
+               fill = bloodStatus,
+           position = "dodge") +
+  geom_text(
+    aes(x = fct_reorder(bloodStatus, bloodsexTotalPoints, .desc = TRUE), 
+        label = count2,
+        y = bloodsexTotalPoints + 10,
+        group = sex),
+    position = position_dodge(0.9),
+    vjust = 0,
+    size = 15
+  ) +
+  scale_fill_manual(values = c("Male" = "blue", "Female" = "pink")) +
+  labs(
+    x = "Происхождение",
+    y = "Сумма баллов",
+    fill = "Пол",
+    title = "Сумма баллов в зависимости от происхождения и пола",
+    subtitle = "Цифры вверху столбцов обозначают число студентов"
+  ) +
+  theme_custom
+
+
+```
+
+
+### 4. Изучите функцию coord_flip() . Как вы думаете, когда она может быть
+полезна? Как вы думаете, в чем ее плюсы и минусы? (дополнительные 0.5
+б.)
+
+Эта функция может быть полезна для того, чтобы быстро посмотреть, как будет график смотреться в других осях.
+Также она хороша для того, чтобы изменить уже утвержденный график для другого формата:
+Например, из формата для печати на А4 на формат для презентации.
+
+Ее минусом является то, что она является своеобразным костылем, и забыв про нее, мы можем нагородить ошибок,
+преобразуя график в дальнейшем
+
+
+А если мы хотим визуализировать не количество?
+
+```{r}
+houseResult <- hogwarts |> 
+  group_by(house) |> 
+  summarise(houseTotalPoints = sum(result))
+
+ggplot(houseResult)+
+  geom_col(aes(x = fct_reorder(house, houseTotalPoints, .desc = TRUE), 
+               y = houseTotalPoints,
+               fill = house))+
+  scale_fill_manual(values = c("Gryffindor" = "#C50000", 
+                             "Hufflepuff" = "#ECB939", 
+                             "Ravenclaw" = "#41A6D9", 
+                             "Slytherin" = "#1F5D25"))+
+  xlab(label = "house")+
+  theme_custom
+```
+
+```{r}
+houseResult <- hogwarts |> 
+  group_by(house, wandCore) |> 
+  summarise(houseTotalPoints = sum(result)) |> 
+  mutate(`house and wnad core` = paste0(house, " & ", wandCore))
+
+house_wand_result_plot <- ggplot(houseResult)+
+  geom_col(aes(y = fct_reorder(`house and wnad core`, houseTotalPoints, .desc = FALSE), 
+               x = houseTotalPoints,
+               fill = house))+
+  labs(title = "Распределение очков факультета\nв зависимости от факультета и волшебной палочки",
+       subtitle = "Учебный год 2023/2024",
+       caption = "Данные предоставлены Институтом биоинформатики",
+       x = "Очки",
+       y = "Факультет и палочка",
+       fill = "Факультет")+
+  scale_fill_manual(labels = c("Gryffindor" = "Гриффиндор", 
+                             "Hufflepuff" = "Пуффендуй", 
+                             "Ravenclaw" = "Когтевран", 
+                             "Slytherin" = "Слизерин"),
+                    values = c("Gryffindor" = "#C50000", 
+                             "Hufflepuff" = "#ECB939", 
+                             "Ravenclaw" = "#41A6D9", 
+                             "Slytherin" = "#1F5D25")
+                    )+
+  scale_x_continuous(breaks = seq(0,6000,l=7))+
+  theme_custom
+
+house_wand_result_plot
+
+```
+
+
+### Текстовые метки
+
+```{r}
+house_wand_result_plot+
+  geom_text(aes(y = fct_reorder(`house and wnad core`, houseTotalPoints, .desc = FALSE), 
+               x = houseTotalPoints,
+               label = paste0(houseTotalPoints, " points")),
+            colour = "black",
+            size = 8,
+            hjust = -1)+
+  xlim(0, 10000)
+```
+
+## Вредные советы
+
+Посмотрим на другое представление данных по факультетам.
+
+```{r}
+houseCountDf <- hogwarts |> 
+  group_by(house) |> 
+  summarise(count = n())
+
+pieTestPlot <- ggplot(houseCountDf)+
+  geom_col(aes(x = "",
+               y = count, 
+               fill = house))+
+  coord_polar(theta = "y")+
+  scale_fill_manual(values = c("Gryffindor" = "#C50000", 
+                             "Hufflepuff" = "#ECB939", 
+                             "Ravenclaw" = "#41A6D9", 
+                             "Slytherin" = "#1F5D25"))+
+  theme_custom
+
+barTestPlot <- ggplot(hogwarts)+
+  geom_bar(aes(x = fct_infreq(house), 
+               fill = house))+
+  scale_fill_manual(values = c("Gryffindor" = "#C50000", 
+                           "Hufflepuff" = "#ECB939", 
+                           "Ravenclaw" = "#41A6D9", 
+                           "Slytherin" = "#1F5D25"))+
+  xlab(label = "house")+
+  theme_custom
+
+ggarrange(plotlist = list(pieTestPlot, barTestPlot), ncol = 2)
+```
+
+Попробуем взять средние.
+
+```{r}
+housePotionsExam <- hogwarts |> 
+  group_by(house) |> 
+  summarise(meanPotionsExam = mean(`Potions exam`))
+
+ggplot(housePotionsExam)+
+  geom_col(aes(x = house, 
+               y = meanPotionsExam,
+               fill = house))+
+  scale_fill_manual(values = c("Gryffindor" = "#C50000", 
+                             "Hufflepuff" = "#ECB939", 
+                             "Ravenclaw" = "#41A6D9", 
+                             "Slytherin" = "#1F5D25"))+
+  theme_custom
+```
+
+### Интервалы
+
+```{r}
+housePotionsExam <- hogwarts |> 
+  group_by(house) |> 
+  summarise(meanPotionsExam = mean(`Potions exam`) |> round(2),
+            ci95Min = (min(`Potions exam`) |> round(2)),
+            ci95Max = (max(`Potions exam`) |> round(2)))
+
+ggplot(housePotionsExam, aes(x = house, 
+               y = meanPotionsExam))+
+  # geom_point(aes(colour = house),
+  #            size = 3)+
+  geom_pointrange(aes(ymin = ci95Min,
+                      ymax = ci95Max, 
+                    colour = house),
+                # width = 0.3,
+                linewidth = 2,
+                fatten = 7)+
+  ylim(0, 100)+
+  theme_custom
+```
+
+
+
