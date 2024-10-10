@@ -11,6 +11,11 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
 library(flextable)
+library(dplyr)
+library(RColorBrewer)
+library(ggpubr)
+library(purrr)
+library(broom)
 
 ```
 
@@ -20,13 +25,9 @@ library(flextable)
 
 ```{r}
 
-mydf <- read_csv2("/Users/anastasiagorskova/Downloads/biostat_homework_092024/data/raw/cardio_train_big.csv")
+mydf <- read_csv2("data/raw/cardio_train_big.csv")
 
 
-mydf <- mydf %>% 
-  mutate(
-    age = age %/% 365 #replacing age in days to age in years
-  )
 ```
 
 # Выведите общее описание данных
@@ -36,13 +37,136 @@ mydf <- mydf %>%
 mydf %>%
   glimpse()
 
+summary(mydf)
+
+```
+Вывод:
+Возраст нормально представлен
+Пол - сделать фактором и переименовать
+Рост - убрать аутлаеры
+Вес - с ним что-то не то, впечатление что надо разделить на 10 и убрать аутлаеры
+Давление - убрать отрицательные значения и аутлаеры
+Остальные переменные - сделать фактором и переименовать
+
+Стратегия чистки данных такая: нереалистичные данные заменяем на NA, потом убираем строки и столбцы где много NA, потом убираем строки с аутлаерами. Если осталось хотя бы 50 тысяч строк из 70 тысяч - все окей.
+
+```{r}
+# Преобразование возраста в года и округление до целого
+df <- mydf %>%
+  mutate(
+    age = as.integer(age / 365),  # Делим возраст на 365 и преобразуем в целое число
+    weight = as.numeric(weight/ 10),  # Преобразуем вес в целое число и тоже делим на 10
+    ap_hi = as.numeric(ap_hi),    # Преобразуем systolic BP в целое число
+    ap_lo = as.numeric(ap_lo)     # Преобразуем diastolic BP в целое число
+  )
+# Замена значений в факторных переменных
+df <- df %>%
+  mutate(
+    gender = as.factor(recode(gender, `1` = 'Ж', `2` = 'М')),
+    gluc = as.factor(recode(gluc, `1` = 'норма', `2` = 'повышенный', `3` = 'высокий')),
+    cholesterol = as.factor(recode(cholesterol, `1` = 'норма', `2` = 'повышенный', `3` = 'высокий')),
+    smoke = as.factor(recode(smoke, `0` = 'некурящий', `1` = 'курящий')),
+    alco = as.factor(recode(alco, `0` = 'не употребляет', `1` = 'употребляет')),
+    active = as.factor(recode(active, `0` = 'не активен', `1` = 'активен')),
+    cardio = as.factor(recode(cardio, `0` = 'не болен', `1` = 'болен'))
+  )
+# Выводим статистику
+summary(df)
 ```
 
+Заменяем на NA совсем нереалистичные значения
+
+```{r}
+df <- df %>%
+  mutate(
+    # Заменяем ap_hi и ap_lo на NA, если ap_hi меньше ap_lo
+    ap_hi = ifelse(ap_hi < ap_lo, NA, ap_hi),
+    ap_lo = ifelse(ap_hi < ap_lo, NA, ap_lo),
+    height = ifelse(height < 100, NA, height),  # Заменяем height на NA, если меньше 100
+    height = ifelse(height > 250, NA, height),  # Заменяем height на NA, если больше 250
+    weight = ifelse(weight < 25, NA, weight),   # Заменяем weight на NA, если меньше 25
+    weight = ifelse(weight > 500, NA, weight),   # Заменяем weight на NA, если больше 500
+    ap_hi = ifelse(ap_hi < 30, NA, ap_hi),      # Заменяем ap_hi на NA, если меньше 30
+    ap_hi = ifelse(ap_hi > 300, NA, ap_hi),      # Заменяем ap_hi на NA, если больше 300
+    ap_lo = ifelse(ap_lo < 30, NA, ap_lo),      # Заменяем ap_lo на NA, если меньше 30
+    ap_lo = ifelse(ap_lo > 300, NA, ap_lo)      # Заменяем ap_lo на NA, если больше 300
+    )
+summary(df)
+```
 # Очистка данных
 
-1) Уберите переменные, в которых пропущенных значений больше 20% или уберите субъектов со слишком большим количеством пропущенных значений. Или совместите оба варианта. Напишите обоснование, почему вы выбрали тот или иной вариант:
+Уберите переменные, в которых пропущенных значений больше 20% или уберите субъектов со слишком большим количеством пропущенных значений. Или совместите оба варианта. Напишите обоснование, почему вы выбрали тот или иной вариант:
 
-**Обоснование**: 
+**Обоснование**: В переменных давления по 1300 NA´s, что вполне допустимо для датасета в 70 тысяч значений, поэтому я не удаляла переменные. Нашлось три субъекта с 20% пропущенных, удалила их.
+
+
+Ищем субъектов с 20% пропущенных значений 
+
+
+```{r}
+num_rows_with_na <- df %>%
+  filter(rowSums(is.na(.)) >= 3) %>%  # Считаем количество NA в каждой строке и фильтруем строки с тремя и больше NA (20% от 12 переменных)
+  nrow()  # Подсчет количества таких строк
+
+num_rows_with_na
+```
+
+Три человека - это ок, можем пожертвовать ими
+
+```{r}
+# Удаление строк с тремя или более NA
+df <- df %>%
+  filter(rowSums(is.na(.)) < 3)
+summary(df)
+```
+
+
+```{r}
+# Отсортируйте данные по возрасту по убыванию
+df <- df %>%
+   arrange(desc(age))
+```
+
+Дальше я разбиваю данные на две группы: кардио и не-кардио, и буду рассматривать значения на предмет поиска выбивающихся значений отдельно в каждой группе
+
+```{r}
+# Определение аутлаеров
+outliers <- df %>%
+  group_by(cardio) %>%
+  # Для каждой группы находим среднее и стандартное отклонение
+  summarise(
+    height_mean = mean(height, na.rm = TRUE),
+    height_sd = sd(height, na.rm = TRUE),
+    weight_mean = mean(weight, na.rm = TRUE),
+    weight_sd = sd(weight, na.rm = TRUE),
+    ap_hi_mean = mean(ap_hi, na.rm = TRUE),
+    ap_hi_sd = sd(ap_hi, na.rm = TRUE),
+    ap_lo_mean = mean(ap_lo, na.rm = TRUE),
+    ap_lo_sd = sd(ap_lo, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  # Соединяем результаты по группе для каждого субъекта
+  inner_join(df, by = "cardio") %>%
+  # Определяем аутлаеры
+  filter(
+    (height < (height_mean - 3 * height_sd) | height > (height_mean + 3 * height_sd)) |
+    (weight < (weight_mean - 3 * weight_sd) | weight > (weight_mean + 3 * weight_sd)) |
+    (ap_hi < (ap_hi_mean - 3 * ap_hi_sd) | ap_hi > (ap_hi_mean + 3 * ap_hi_sd)) |
+    (ap_lo < (ap_lo_mean - 3 * ap_lo_sd) | ap_lo > (ap_lo_mean + 3 * ap_lo_sd))
+  )
+write.csv(outliers, "outliers.csv")
+```
+
+
+```{r}
+# Удаляем аутлаеры из исходного датасета
+cleaned_data <- df %>%
+  anti_join(outliers)
+summary(cleaned_data)
+```
+Теперь все данные более-менее хорошо выглядят, нет выбивающихся значений, все красиво
+
+Задание было:
 
 2) Переименуйте переменные в человекочитаемый вид (что делать с пробелами в названиях?);
 
@@ -54,74 +178,66 @@ mydf %>%
 
 6) Присвойте получившийся датасет переменной "cleaned_data".
 
-```{r}
-#make groups - cardio or not
-
-original_data %>%
-  select(contains(c("GRP", "GEN", "VAS", "WBC", "RBC", "HGB"))) %>%
-  rename_with(function(x) x %>% 
-                str_replace("V0_", "Визит 0__") %>% 
-                str_replace("V1_", "Визит 1__") %>% 
-                str_replace("V2_", "Визит 2__") %>%
-                str_replace("CB_", "") %>%
-                str_remove("DEM_") %>%
-                str_replace("GEN", "Sex") %>%                
-                str_replace("WBC", "White blood cells") %>%
-                str_replace("RBC", "Red blood cells") %>%
-                str_replace("HGB", "Hemoglobin")) %>%
-  rename(Group = `Визит 0__GRP`) %>%
-
-
-# count total missing values 
-sum(is.na(mydf)) 
-
-mydf %>%
-  rename_with(function(x) x %>%
-                str_replace("age", "Age") %>%
-                str_replace("id", "Patient number")
-                ) %>%
-  #mutate(across(where(is.character), function(x) as.factor(x))) -> mydf2
-#mydf %>% mutate(across(where(is.character), as.factor))-> mydf2
-mydf2 %>%
-  glimpse()
-View(mydf2)
-```
-1) Датасет уже почищенный, пропущенных значений в нем нет
-2) Столбцы переименованы
+**сделано**
 
 # Сколько осталось переменных?
 
 ```{r}
-
-
-
+ncol(cleaned_data)
 ```
+
+Осталось 12 переменных (первый столбик - id)
 
 # Сколько осталось случаев?
 
 ```{r}
-
-
-
+nrow(cleaned_data)
 ```
+
+Осталось 67920 случаев
 
 # Есть ли в данных идентичные строки?
 
 ```{r}
-
-
-
+cleaned_data %>%
+  filter(duplicated(.) | duplicated(., fromLast = TRUE)) %>%
+  nrow()
 ```
+
+Нет, идентичных строк нет
 
 # Сколько всего переменных с пропущенными значениями в данных и сколько пропущенных точек в каждой такой переменной?
 
 ```{r}
+na_counts <- cleaned_data %>%
+  summarise(
+    height_na = sum(is.na(height)),
+    weight_na = sum(is.na(weight)),
+    ap_hi_na = sum(is.na(ap_hi)),
+    ap_lo_na = sum(is.na(ap_lo))
+  )
+na_counts
+```
 
 
+Всего четыре переменные с пропущенными значениями: height, weight, ap_hi, ap_lo,
+height_na - 23
+weight_na - 8
+ap_hi_na - 1248
+ap_lo_na - 1253
 
+# Добавляем ИМТ
+
+Исходя из базовых знаний, мы знаем, что и в этом датасете скорее всего вероятность наличия сердечно-сосудистых заболеваний связана с весом человека, но не с ростом, хотя вес человека сильно зависит от роста. И мы знаем, что есть такой параметр как ИМТ, который позволяет выявить наличие избыточного веса. Добавим параметр BMI в таблицу.
+
+```{r}
+cleaned_data$BMI <- round(cleaned_data$weight / ((cleaned_data$height / 100)^2), 2)
+summary(cleaned_data)
 ```
 
 # Описательные статистики
+
+
 ```{r}
 statistics <- list(
       `Количество субъектов` = ~length(.x) %>% as.character(),
@@ -129,11 +245,34 @@ statistics <- list(
       `Нет данных` = ~sum(is.na(.x)) %>% as.character(),
       `Ср. знач.` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", mean(.x, na.rm = TRUE) %>% round(2) %>% as.character()),
       `Станд. отклон.` = ~ifelse(sum(!is.na(.x)) < 3, "Н/П*", sd(.x, na.rm = TRUE) %>% round(2) %>% as.character()),
-      `95% ДИ для среднего` = ~sd(.x, na.rm = TRUE) %>% round(2) %>% as.character(),
+      `95% ДИ для среднего` = ~ifelse(sum(!is.na(.x)) < 3, "Н/П*", paste0(ci_min(.x) %>% round(2), " - ", ci_max(.x) %>% round(2))),
       `мин. - макс.` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", paste0(min(.x, na.rm = TRUE) %>% round(2), " - ", max(.x, na.rm = TRUE) %>% round(2))),
       `Медиана` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", median(.x, na.rm = TRUE) %>% round(2) %>% as.character()),
       `Q1 - Q3` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", paste0(quantile(.x, 0.25, na.rm = TRUE) %>% round(2), " - ", quantile(.x, 0.75, na.rm = TRUE) %>% round(2)))
 )
+```
+
+
+Функция для 95%-ного доверительного интервала среднего:
+Немного костыльно, но сделано!
+
+```{r}
+ci_min <- function(x) {
+  x <- na.omit(x)
+  se <- sd(x) / sqrt(length(x))
+  error_margin <- qt(0.975, df = length(x) - 1) * se # t-критическое значение для 95%
+  ci_min <- mean(x) - error_margin
+  return(ci_min)
+}
+
+ci_max <- function(x) {
+  x <- na.omit(x)
+  se <- sd(x) / sqrt(length(x))
+  error_margin <- qt(0.975, df = length(x) - 1) * se # t-критическое значение для 95%
+  ci_max <- mean(x) + error_margin
+  return(ci_max)
+}
+
 ```
 
 ## Количественные переменные
@@ -161,14 +300,25 @@ statistics <- list(
 1.10) 95% ДИ для среднего - задание со звёздочкой.
 
 ```{r}
+#id преобразуем в текст чтобы его не захватило на следующем этапе, а также убираем _ из названия переменных
+cleaned_data <- cleaned_data %>%
+  mutate(id = as.character(id))%>%
+  rename(diaBP = ap_lo, sisBP = ap_hi)
 
-mydf2 %>%
-  select(mydf2, where(is.numeric)) %>%
-  summarize(across(where(is.numeric), statistics))
-
-
-
+#Делим датасет на две части и считаем статистику
+cleaned_data %>%
+  group_by(cardio) %>%
+  select(where(is.numeric)) %>%
+  summarize(across(everything(), statistics)) %>%
+  pivot_longer(!cardio) %>%
+  separate(name, into = c("variable", "statistics"), sep= "_") %>%
+  flextable() %>%
+  theme_box() %>%
+  align(align="center", part="all") %>%
+  width(c("value", "statistics"), width = 2) %>%
+  merge_v(c("cardio", "variable"))
 ```
+
 
 ## Категориальные переменные
 
@@ -180,11 +330,49 @@ mydf2 %>%
 
 1.3) 95% ДИ для доли внутри группы - задание со звёздочкой.
 
+Функция для расчета 95% доверительного интервала для категориальной переменной:
+Границы доверительного интервала +-sqrt(p * (1 - p) / n)
+
+
 ```{r}
-
-
-
+cleaned_data %>%
+  select(cardio, where(is.factor)) %>%
+  pivot_longer(-cardio, names_to = "variable", values_to = "value") %>%
+  group_by(cardio, variable, value) %>%
+  summarise(
+    count = n(),
+    .groups = "drop_last"
+  ) %>%
+  group_by(cardio, variable) %>%
+  mutate(
+    total = sum(count),  # Общее количество в группе для переменной
+    percent = count / total,  # Относительное количество (процент)
+    se = sqrt((percent * (1 - percent)) / total),
+    error_margin = qt(0.975, df = total - 1) * se,
+    ci_lower = round((count - error_margin), 2),
+    ci_upper = round((count + error_margin), 2),
+    ci = paste0(ci_lower, " - ", ci_upper)
+  ) %>%
+  ungroup() %>%  
+  select(-total, -se, -error_margin, -ci_upper, -ci_lower) %>% # Удалили ненужные столбики
+  mutate(
+    percent = round(percent * 100, 2),
+    percent = paste0(percent, " % ")
+         ) %>%
+  flextable() %>%
+  theme_box() %>%
+  align(align="center", part="all") %>%
+  width(c("ci"), width = 2) %>%
+  merge_v(c("cardio", "variable"))
 ```
+
+
+Примечание: 95% CI для доли внутри группы получился уж очень близок к среднему за счет того, что у нас очень большое количество наблюдений
+
+Примечание: таблицу для количественных переменных я сделала как на лекции, а для категориальных - как мне удобно и кажется лучше читаемым, могу переделать, если надо
+
+Из таблицы мы видим, что возможно, заболеваемость болезнями сердца может быть связана с повышенным холестерином, глюкозой и низкой активностью
+
 
 # Визуализация
 
@@ -197,56 +385,309 @@ mydf2 %>%
 3) Раскрасьте боксплоты с помощью библиотеки RColorBrewer.
 
 ```{r}
+age_boxplot <- cleaned_data %>%
+  group_by(cardio) %>%
+  ggplot()+
+  geom_boxplot(aes(x = cardio, y = age, fill = cardio))+
+  geom_jitter(aes(x = cardio,, y = age),
+              size = 0.01, alpha = 0.01) +
+  scale_fill_brewer(palette = "Paired") + 
+  labs(x = "Наличие болезней сердца", y = "Возраст")+
+  theme_classic()
 
+height_boxplot <- cleaned_data %>%
+  group_by(cardio) %>%
+  ggplot()+
+  geom_boxplot(aes(x = cardio, y = height, fill = cardio))+
+  geom_jitter(aes(x = cardio,, y = height),
+              size = 0.01, alpha = 0.01) +
+  scale_fill_brewer(palette = "Paired") + 
+  labs(x = "Наличие болезней сердца", y = "Рост")+
+  theme_classic()
 
+weight_boxplot <- cleaned_data %>%
+  group_by(cardio) %>%
+  ggplot()+
+  geom_boxplot(aes(x = cardio, y = weight, fill = cardio))+
+  geom_jitter(aes(x = cardio,, y = weight),
+              size = 0.01, alpha = 0.01) +
+  scale_fill_brewer(palette = "Paired") + 
+  labs(x = "Наличие болезней сердца", y = "Вес")+
+  theme_classic()
+
+BMI_boxplot <- cleaned_data %>%
+  group_by(cardio) %>%
+  ggplot()+
+  geom_boxplot(aes(x = cardio, y = BMI, fill = cardio))+
+  geom_jitter(aes(x = cardio,, y = BMI),
+              size = 0.01, alpha = 0.01) +
+  scale_fill_brewer(palette = "Paired") + 
+  labs(x = "Наличие болезней сердца", y = "ИМТ")+
+  theme_classic()
+
+sisBP_boxplot <- cleaned_data %>%
+  group_by(cardio) %>%
+  ggplot()+
+  geom_boxplot(aes(x = cardio, y = sisBP, fill = cardio))+
+  geom_jitter(aes(x = cardio,, y = sisBP),
+              size = 0.01, alpha = 0.01) +
+  scale_fill_brewer(palette = "Paired") + 
+  labs(x = "Наличие болезней сердца", y = "Систолическое давление")+
+  theme_classic()
+
+diaBP_boxplot <- cleaned_data %>%
+  group_by(cardio) %>%
+  ggplot()+
+  geom_boxplot(aes(x = cardio, y = diaBP, fill = cardio))+
+  geom_jitter(aes(x = cardio,, y = diaBP),
+              size = 0.01, alpha = 0.01) +
+  scale_fill_brewer(palette = "Paired") + 
+  labs(x = "Наличие болезней сердца", y = "Диастолическое давление")+
+  theme_classic()
+
+ggarrange(plotlist = list(age_boxplot, height_boxplot, weight_boxplot, BMI_boxplot, sisBP_boxplot, diaBP_boxplot),
+          ncol = 2, 
+          nrow = 3)
 
 ```
+
+Без джиттеров смотрелось бы лучше, но как есть, таково задание))
 
 ## Категориальные переменные
 
 1) Сделайте подходящие визуализации категориальных переменных. Обоснуйте, почему выбрали именно этот тип.
 
 ```{r}
-
-
-
+cat_data <- cleaned_data %>%
+  select(cardio, where(is.factor)) %>%
+  pivot_longer(-cardio, names_to = "variable", values_to = "value") %>%
+  group_by(cardio, variable, value) %>%
+  summarise(
+    count = n(),
+    .groups = "drop_last"
+  ) %>%
+  group_by(cardio, variable) %>%
+  mutate(
+    total = sum(count),  # Общее количество в группе для переменной
+    percent = count / total,  # Относительное количество (процент)
+    se = sqrt((percent * (1 - percent)) / total),
+    error_margin = qt(0.975, df = total - 1) * se,
+    ci_lower = round((count - error_margin), 2),
+    ci_upper = round((count + error_margin), 2),
+    ci = paste0(ci_lower, " - ", ci_upper)
+  ) %>%
+  ungroup() %>%  
+  select(-total, -se, -error_margin, -ci_upper, -ci_lower) %>% # Удалили ненужные столбики
+  mutate(percent = round(percent * 100, 2)) %>% 
+  group_by(cardio) 
+cat_data
 ```
 
+Я считаю, что так как группы не равны по количеству субъектов, надо отображать только относительные значение
+
+Самое главное - чтобы из графиков было четко видно, по каким параметрам есть отличия между группами больных и не больных по cardio, поэтому столбики "болен" и "не болен" должны стоять рядом.
+
+```{r}
+ggplot(cat_data) +
+  geom_col(aes(x = value, y = percent, fill = factor(cardio)), position = "dodge") +
+  facet_wrap(~variable, scales = "free_x") + 
+  theme_classic() +
+  labs(x = "Значение категориальной переменной", y = "Процент от общего числа", fill = "Cardio") +
+  scale_fill_brewer(palette = "Paired")
+```
+
+Из графика четко видно, что на заболеваемость сильнее всего влияют значение холестерина и глюкозы. Активность, пол и курение тоже могут вносить свой вклад, но не такой большой.
 
 # Статистические оценки
 
 ## Проверка на нормальность
 
-1) Оцените каждую переменную на соответствие нормальному распределению с помощью теста Шапиро-Уилка. Какие из переменных являются нормальными и как как вы это поняли?
+1) Оцените каждую переменную на соответствие нормальному распределению с помощью теста Шапиро-Уилка. Какие из переменных являются нормальными и как вы это поняли?
 
 ```{r}
-
-
-
+cleaned_data %>%
+  group_by(cardio) %>%
+  slice(1:5000) %>%
+  summarise(across(where(is.numeric), 
+                   ~ list(shapiro.test(.)), 
+                   .names = "shapiro_{col}")) %>%
+  pivot_longer(-cardio, 
+               names_to = c(".value", "variable"), 
+               names_sep = "_") %>%
+  mutate(W = map_dbl(shapiro, "statistic"),
+         p_value = map_dbl(shapiro, "p.value")) %>%
+  select(-shapiro)%>%
+  mutate(p_value = formatC(p_value, format = "e", digits = 3)) %>%
+  flextable() %>%
+  theme_box() %>%
+  align(align="center", part="all") %>%
+  width(c("p_value"), width = 2) %>%
+  merge_v(c("cardio", "variable"))
 ```
+
+
+Согласно результатам теста Шапиро-Уилка, распределения всех данных значительно отклоняются от нормального.
+Это и не удивительно, ведь у нас выборки были в 5000 значений, а этот тест работает при малых выборках (до 50)
+
+Я бы все равно использовала параметрические критерии для сравнения значений
 
 2) Постройте для каждой количественной переменной QQ-плот. Отличаются ли выводы от теста Шапиро-Уилка? Какой метод вы бы предпочли и почему?
 
 ```{r}
+age_qqplot <-cleaned_data %>%
+  group_by(cardio) %>%
+  ggplot(aes(sample=age))+
+  stat_qq(size = 0.5, alpha = 0.01)+
+  stat_qq_line(color = "blue", linetype = "dashed") +
+  scale_fill_brewer(palette = "Paired") + 
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения возраста") +
+  facet_wrap(~cardio) +
+  theme_classic()
 
+height_qqplot <-cleaned_data %>%
+  group_by(cardio) %>%
+  ggplot(aes(sample=height))+
+  stat_qq(size = 0.5, alpha = 0.01)+
+  stat_qq_line(color = "blue", linetype = "dashed") +
+  scale_fill_brewer(palette = "Paired") + 
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения роста") +
+  facet_wrap(~cardio) +
+  theme_classic()
 
+weight_qqplot <-cleaned_data %>%
+  group_by(cardio) %>%
+  ggplot(aes(sample=weight))+
+  stat_qq(size = 0.5, alpha = 0.01)+
+  stat_qq_line(color = "blue", linetype = "dashed") +
+  scale_fill_brewer(palette = "Paired") + 
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения веса") +
+  facet_wrap(~cardio) +
+  theme_classic()
 
+BMI_qqplot <-cleaned_data %>%
+  group_by(cardio) %>%
+  ggplot(aes(sample=BMI))+
+  stat_qq(size = 0.5, alpha = 0.01)+
+  stat_qq_line(color = "blue", linetype = "dashed") +
+  scale_fill_brewer(palette = "Paired") + 
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения ИМТ") +
+  facet_wrap(~cardio) +
+  theme_classic()
+
+sisBP_qqplot <-cleaned_data %>%
+  group_by(cardio) %>%
+  ggplot(aes(sample=sisBP))+
+  stat_qq(size = 0.5, alpha = 0.01)+
+  stat_qq_line(color = "blue", linetype = "dashed") +
+  scale_fill_brewer(palette = "Paired") + 
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ систолического АД") +
+  facet_wrap(~cardio) +
+  theme_classic()
+
+diaBP_qqplot <-cleaned_data %>%
+  group_by(cardio) %>%
+  ggplot(aes(sample=diaBP))+
+  stat_qq(size = 0.5, alpha = 0.01)+
+  stat_qq_line(color = "blue", linetype = "dashed") +
+  scale_fill_brewer(palette = "Paired") + 
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ диастолического АД") +
+  facet_wrap(~cardio) +
+  theme_classic()
 ```
+
+
+```{r}
+ggarrange(plotlist = list(age_qqplot, height_qqplot),
+          ncol = 2, 
+          nrow = 1,
+          heights = c(10),
+          widths = c(10, 10) )
+```
+
+```{r}
+ggarrange(plotlist = list(weight_qqplot, BMI_qqplot),
+          ncol = 2, 
+          nrow = 1,
+          heights = c(10),
+          widths = c(10, 10) )
+```
+
+
+```{r}
+ggarrange(plotlist = list(sisBP_qqplot, diaBP_qqplot),
+          ncol = 2, 
+          nrow = 1,
+          heights = c(10),
+          widths = c(10, 10) )
+```
+
+Интерпретация графиков немного затрудняется тем, что на такой большой выборке непрерывные данные выглядят как дискретные
+
+Рост, вес и давления распределены очень близко к нормальному
+
+ИМТ и возраст не совсем, возраст отклонется в сторону похожести на равномерное распределение, а ИМТ - экспоненциальное, но в пределах нормы
+
+Как и ожидалось, результат не совпал с результатом теста Шапиро-Уилка
+
+*Мы все равно можем считать эти переменные близкими к нормальным согласно центральной предельной теореме*
 
 3) Ниже напишите, какие ещё методы проверки на нормальность вы знаете и какие у них есть ограничения.
 
 **Напишите текст здесь**
-
+1. Колмогорова-Смирнова
+Чувствителен на больших выборках и может давать ложные срабатывания для малых выборок.
+Требует, чтобы данные были независимыми и одинаково распределенными
+2. Андерсона-Дарлинга
+Расширение теста Колмогорова-Смирнова, которое уделяет больше внимания хвостам распределения.
+Может быть менее эффективным для больших выборок.
+Требует, чтобы данные были независимыми и одинаково распределенными
+3. "Посмотреть глазами на гистограмму"
+Может быть очень субъективным и предвзятым, результат зависит от "религии" исследователя - какие ему тесты больше нравятся, параметрические или непараметрические
 
 ## Сравнение групп
 
 1) Сравните группы (переменная **cardio**) по каждой переменной (как количественной, так и категориальной). Для каждой переменной выберите нужный критерий и кратко обоснуйте его выбор в комментариях.
 
+Мы считаем, что все наши количественные переменные распределены нормально, поэтому применяем T-test для них.
+Для категориальных переменных мы применяем хи-квадрат, так как у нас больше 5 значений в каждой из ячеек таблицы сопряженности
+
+
 ```{r}
 
+# Количественные переменные и t-тест
+quant_vars <- c("age", "height", "weight", "BMI", "sisBP", "diaBP")
+t_tests <- map(quant_vars, ~ t.test(as.formula(paste(.x, "~ cardio")), data = cleaned_data) %>%
+                 tidy() %>%
+                 mutate(variable = .x))
 
+# Категориальные переменные и хи квадрат тест
+cat_vars <- c("gender", "cholesterol", "gluc", "smoke", "alco", "active")
+chisq_tests <- map(cat_vars, ~ chisq.test(table(cleaned_data[[.x]], cleaned_data$cardio)) %>%
+                    tidy() %>%
+                    mutate(variable = .x))
+results_combined <- bind_rows(t_tests, chisq_tests)
 
+# Выводим таблицу
+results_combined %>%  
+  select(variable, statistic, p.value, method) %>% # Удалили ненужные столбики, поменяли порядок в нужных
+  mutate(p.value = formatC(p.value, format = "e", digits = 3),
+         significance = ifelse(as.numeric(p.value) < 0.05, "yes", "no")) %>%
+  flextable() %>%
+  theme_box() %>%
+  align(align="center", part="all") %>%
+  width(c("method", "p.value"), width = 2)
 ```
+
+
+Получается, между группами достоверно различаются следующие параметры:
+Возраст, рост, вес, ИМТ, давление, уровень холестерина, глюкозы, курение и уровень активности 
+
 
 # Далее идут **необязательные** дополнительные задания, которые могут принести вам дополнительные баллы в том числе в случае ошибок в предыдущих
 
@@ -254,8 +695,8 @@ mydf2 %>%
 
 1) Создайте корреляционную матрицу с визуализацией и поправкой на множественные сравнения. Объясните, когда лучше использовать корреляционные матрицы и в чём минусы и плюсы корреляционных исследований.
 
-```{r}
 
+```{r}
 
 
 ```
