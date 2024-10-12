@@ -16,41 +16,14 @@ library(ggExtra)
 library(ggridges)
 ```
 
-## Загрузка данных
+## Загрузка данных и все как всегда
 
 ```{r}
 hogwarts <- read_csv("data/hogwarts_2024.csv")
-hogwarts |> head()
-```
 
-### Проверка структуры данных
-
-```{r}
-hogwarts |> glimpse()
-
-# Changing some variables type to factors
 hogwarts <- hogwarts |> mutate(
-  across(c(house, course, sex, wandCore, bloodStatus), ~ as.factor(.x))
-)
-```
+  across(c(house, course, sex, wandCore, bloodStatus), ~ as.factor(.x)))
 
-### Поиск пропущенных значений
-
-```{r}
-sum(is.na(hogwarts))
-```
-
-### Сводка по данным
-
-```{r}
-hogwarts |> 
-  summary()
-``` 
-
-
-### Пересоздание theme_custom
-
-```{r}
 theme_custom <- theme(
     panel.background = element_rect(fill = "white"),
     plot.title = element_text(size = 30, hjust = 0.5),
@@ -62,10 +35,12 @@ theme_custom <- theme(
     legend.text = element_text(size = 20)
   )
 
-# А еще мы создаем функцию для стандартной ошибки среднего
 se <- function(x){
   sd(x, na.rm=TRUE)/sqrt(length(x))
 }
+
+hogwarts |> 
+  summary()
 ```
 
 ## Диаграммы рассеяния (скаттерплоты)

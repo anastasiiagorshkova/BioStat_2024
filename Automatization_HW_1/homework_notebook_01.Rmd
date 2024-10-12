@@ -16,7 +16,7 @@ library(RColorBrewer)
 library(ggpubr)
 library(purrr)
 library(broom)
-
+library(corrplot)
 ```
 
 # Чтение данных
@@ -178,7 +178,7 @@ summary(cleaned_data)
 
 6) Присвойте получившийся датасет переменной "cleaned_data".
 
-**сделано**
+**сделано, но аутлаеры случайно по интерквартильному считала**
 
 # Сколько осталось переменных?
 
@@ -199,9 +199,8 @@ nrow(cleaned_data)
 # Есть ли в данных идентичные строки?
 
 ```{r}
-cleaned_data %>%
-  filter(duplicated(.) | duplicated(., fromLast = TRUE)) %>%
-  nrow()
+sum(duplicated(cleaned_data) | duplicated(cleaned_data))
+
 ```
 
 Нет, идентичных строк нет
@@ -254,7 +253,7 @@ statistics <- list(
 
 
 Функция для 95%-ного доверительного интервала среднего:
-Немного костыльно, но сделано!
+Костыльно, но сделано! Как сделать некостыльно - я не знаю, не смогла
 
 ```{r}
 ci_min <- function(x) {
@@ -367,7 +366,7 @@ cleaned_data %>%
 ```
 
 
-Примечание: 95% CI для доли внутри группы получился уж очень близок к среднему за счет того, что у нас очень большое количество наблюдений
+Примечание: 95% CI для доли внутри группы получился уж очень близок к среднему за счет того, что у нас очень большое количество наблюдений. Если я все сделала правильно, то в этом случае эта метрика бессмысленна
 
 Примечание: таблицу для количественных переменных я сделала как на лекции, а для категориальных - как мне удобно и кажется лучше читаемым, могу переделать, если надо
 
@@ -458,6 +457,7 @@ ggarrange(plotlist = list(age_boxplot, height_boxplot, weight_boxplot, BMI_boxpl
 1) Сделайте подходящие визуализации категориальных переменных. Обоснуйте, почему выбрали именно этот тип.
 
 ```{r}
+#Скопировала и сохранила сводную табличку по категориальным метрикам
 cat_data <- cleaned_data %>%
   select(cardio, where(is.factor)) %>%
   pivot_longer(-cardio, names_to = "variable", values_to = "value") %>%
@@ -469,7 +469,7 @@ cat_data <- cleaned_data %>%
   group_by(cardio, variable) %>%
   mutate(
     total = sum(count),  # Общее количество в группе для переменной
-    percent = count / total,  # Относительное количество (процент)
+    percent = count / total,  # Относительное количество
     se = sqrt((percent * (1 - percent)) / total),
     error_margin = qt(0.975, df = total - 1) * se,
     ci_lower = round((count - error_margin), 2),
@@ -477,7 +477,7 @@ cat_data <- cleaned_data %>%
     ci = paste0(ci_lower, " - ", ci_upper)
   ) %>%
   ungroup() %>%  
-  select(-total, -se, -error_margin, -ci_upper, -ci_lower) %>% # Удалили ненужные столбики
+  select(-total, -se, -error_margin, -ci_upper, -ci_lower) %>% # Удалила ненужные столбики
   mutate(percent = round(percent * 100, 2)) %>% 
   group_by(cardio) 
 cat_data
@@ -489,7 +489,7 @@ cat_data
 
 ```{r}
 ggplot(cat_data) +
-  geom_col(aes(x = value, y = percent, fill = factor(cardio)), position = "dodge") +
+  geom_col(aes(x = value, y = percent, fill = factor(cardio)), color = "black", position = "dodge") + #позиция додж чтобы столбики стояли рядом
   facet_wrap(~variable, scales = "free_x") + 
   theme_classic() +
   labs(x = "Значение категориальной переменной", y = "Процент от общего числа", fill = "Cardio") +
@@ -514,8 +514,8 @@ cleaned_data %>%
   pivot_longer(-cardio, 
                names_to = c(".value", "variable"), 
                names_sep = "_") %>%
-  mutate(W = map_dbl(shapiro, "statistic"),
-         p_value = map_dbl(shapiro, "p.value")) %>%
+  mutate(w_shapiro = map_dbl(shapiro, "statistic"),
+         p_value = map_dbl(shapiro, "p.value")) %>% #как в одно действие распарсить значение критерия и пи велью я не знаю
   select(-shapiro)%>%
   mutate(p_value = formatC(p_value, format = "e", digits = 3)) %>%
   flextable() %>%
@@ -672,6 +672,7 @@ chisq_tests <- map(cat_vars, ~ chisq.test(table(cleaned_data[[.x]], cleaned_data
                     tidy() %>%
                     mutate(variable = .x))
 results_combined <- bind_rows(t_tests, chisq_tests)
+# этот код от чат гпт - я свой тоже написала, но попросила чат его сократить и сделать красивее
 
 # Выводим таблицу
 results_combined %>%  
@@ -697,9 +698,43 @@ results_combined %>%
 
 
 ```{r}
+cor_matrix <- cleaned_data %>% #сначала считаем матрицу корреляций
+  mutate(age = as.numeric(age))%>%
+  select(where(is.numeric), -id) %>%
+  drop_na() %>%
+  cor(use = "pairwise.complete.obs")
 
-
+corrplot(cor_matrix, method = "shade", type = "lower", # потом строим плот
+         addCoef.col = "grey30", diag = FALSE,         # и нааа маленьком плотууу
+         cl.pos = "b", tl.col = "grey10",
+         col = COL2('RdBu', 10)) 
 ```
+
+Удивительно (нет), но так как ИМТ высчитан из массы тела, он сильно с ней коррелирует
+
+Также неудивительно, что систолическое давление коррелирует с диастолическим
+
+Никаких открытий тут нет, все довольно прозаично...
+
+Оставим отображение только тех корреляций у кого скорректированное пи велью меньше 0,05
+
+```{r}
+corr_data <- cleaned_data %>% #делаем датасет только из количественных переменных
+  mutate(age = as.numeric(age)) %>%
+  select(where(is.numeric), -id) %>%
+  drop_na() 
+
+corr_p = cor.mtest(corr_data, conf.level = 0.95)
+
+p_values <- corr_p$p[!is.na(corr_p$p)]
+p_adjusted <- p.adjust(p_values, method = "bonferroni")
+corr_p$p[!is.na(corr_p$p)] <- p_adjusted
+
+## specialized the insignificant value according to the 5% significant level
+corrplot(cor_matrix, p.mat = corr_p$p, sig.level = 0.05, order = 'hclust', addrect = 2)
+```
+
+А у них у всех пи велью меньше 0,05
 
 ## Моделирование
 
@@ -707,7 +742,7 @@ results_combined %>%
 
 ```{r}
 
-
+#я не умею...
 
 ```
 
