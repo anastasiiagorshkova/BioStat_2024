@@ -852,7 +852,18 @@ blood_plot
 
 Распределение по факультетам 
 
-```{r}
+```{r fig.width=8, fig.height=5}
+theme_custom3 <- theme(
+    panel.background = element_rect(fill = "white"),
+    plot.title = element_text(size = 15, hjust = 0.5),
+    plot.subtitle = element_text(size = 25, hjust = 0.5),
+    strip.text = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10)
+  )
+
 scatter1 <- hogwarts |> 
   ggplot(aes(x = `Potions exam`, y = `Study of ancient runes exam`)) +
   geom_point(aes(color = house, alpha = 0.6)) +
@@ -870,7 +881,7 @@ scatter1 <- hogwarts |>
     y = "Оценка по древним рунам",
     title = " ") +
   guides(alpha = "none") +
-  theme_custom +
+  theme_custom3 +
   theme(legend.position = "left")
 
 plot1 <- ggMarginal(scatter1, type = "density", size = 3, groupFill = TRUE)
@@ -879,7 +890,7 @@ plot1
 
 Тут мы видим, что Слизерин выбивается в отличники по зельеварению, а Когтевран - по рунам. Дискриминация или природный дар?
 
-```{r}
+```{r fig.width=8, fig.height=5}
 scatter2 <- hogwarts |> 
   ggplot(aes(x = `Potions exam`, y = `Study of ancient runes exam`)) +
   geom_point(aes(color = sex, alpha = 0.6)) +
@@ -888,13 +899,13 @@ scatter2 <- hogwarts |>
     values = c(
       "male" = "#C50000", 
       "female" = "#ECB939"),
-    labels = c("Мужской", "Женский")) +
+    labels = c("Женский", "Мужской")) +
   labs(
     x = "Оценка по зельеварению",
     y = "Оценка по древним рунам",
     title = " ") +
   guides(alpha = "none") +
-  theme_custom +
+  theme_custom3 +
   theme(legend.position = "left")
 
 plot2 <- ggMarginal(scatter2, type = "density", size = 3, groupFill = TRUE)
@@ -902,17 +913,24 @@ plot2
 ```
 
 
-Тут мы видим, что, во-первых, оценки по зельеварению распределены не нормально, что уже наводит на мысль, и во-вторых, что девочки лучше усваивают древние руны, чем мальчики
+Тут мы видим, что, во-первых, оценки по зельеварению распределены не нормально, что уже наводит на мысль, и во-вторых, что мальчики хуже усваивают древние руны, чем девочки, но это скорее всего из-за мальчиков из Слизерина
 
-```{r}
+```{r fig.width=16, fig.height=5}
 plot3 <- hogwarts |>
   ggplot() + 
-  geom_histogram(aes(x = `Potions exam`), fill = "blue", alpha = 0.3, color = "black", position = "identity") +
-  geom_histogram(aes(x = `Study of ancient runes exam`), fill = "red", alpha = 0.3, color = "black", position = "identity")+
-  theme_custom+
-   theme(
+  geom_histogram(aes(x = `Potions exam`, fill = "Potions"), alpha = 0.3, color = "black", position = "identity") +
+  geom_histogram(aes(x = `Study of ancient runes exam`, fill = "Runes" ), alpha = 0.3, color = "black", position = "identity")+
+  theme_custom3+
+  theme(
     axis.lable.x = element_blank(),
     plot.margin = margin(10, 10, 10, 10)
+  )+
+  scale_fill_manual(name = "Экзамен", 
+                    values = c("Potions" = "red", "Runes" = "blue")) +
+  labs(
+    title = "Распределение оценок",
+       x = "Оценка",
+       y = "Число студентов"
   )
 plot3
 ```
@@ -925,12 +943,12 @@ plot4 <- ggarrange(
   ncol = 1,
   heights = c(1, 0.5)                
 )
-ggsave("distributions_plot.png", plot = plot4, width = 16, height = 10, dpi = 300)
+
 plot4
 ```
 
 
-Я уже устала и уже не знаю, как переименовать оси на третьем графике и добавить легенду...
+Тут мы видим, что мальчики из Слизерина заметно хуже и девочек из Слизерина, и вообще других студентов, сдают экзамен по рунам.
 
 ### 2. Визуализируйте средний балл по зельеварению студентов с различным происхождением. 
 Вы вольны добавить дополнительные детали и
@@ -944,6 +962,111 @@ ggarrange. (по 1 б. за первый и график и правильную
 Скорректируйте название оси. Если у вас возникают сложности,
 обратитесь к шпаргалке по пакету forcats от posit. (Дополнительные 0.5 б.)
 
+```{r}
+hogwarts |> 
+  select(`Potions exam`, bloodStatus)|>
+  ggplot()+
+  geom_boxplot(aes(x = fct_reorder(bloodStatus, `Potions exam`), y = `Potions exam`, fill = bloodStatus))+
+  scale_fill_manual(values = c("muggle-born" = "burlywood2", "pure-blood" = "azure2", "half-blood" = "rosybrown2"),
+                    labels = c("muggle-born" = "Маглорожденные", "pure-blood" = "Чистокровные", "half-blood" = "Полукровки"))+
+  labs(x = "Происхождение", y = "Оценки за зельеварение", fill = "Происхождение") +
+#  facet_wrap(vars(house))+
+  theme_custom
+```
+
+У маглорожденных в среднем более низкие оценки по зельеварению. Это может быть дискриминация всех маглорожденных, либо определенной их группы.
+
+Возможно Снейп не любит маглорожденных из определенной категории?
+
+```{r}
+
+plot5 <- hogwarts |> 
+  select(house, sex, `Potions exam`, bloodStatus, sex, wandCore)|>
+  ggplot()+
+  geom_boxplot(aes(x = fct_reorder(sex, `Potions exam`), y = `Potions exam`, fill = bloodStatus))+
+  scale_fill_manual(values = c("muggle-born" = "burlywood2", "pure-blood" = "azure2", "half-blood" = "rosybrown2"),
+                    labels = c("muggle-born" = "Маглорожденные", "pure-blood" = "Чистокровные", "half-blood" = "Полукровки"))+
+  labs(x = "Пол", y = "Оценки за зельеварение", fill = "Происхождение") +
+#  facet_wrap(vars(sex))+
+  theme_custom
+plot5
+```
+
+Кажется, оценки по Зельеварению ниже только у маглорожденных девочек. Снейп мстит за Лилли?
+
+Или может, он предвзято относится к Гриффиндорцам?
 
 
+```{r}
 
+hogwarts |> 
+  select(house, sex, `Potions exam`, bloodStatus, sex, wandCore)|>
+  ggplot()+
+  geom_boxplot(aes(x = fct_reorder(house, `Potions exam`), y = `Potions exam`, fill = bloodStatus))+
+  scale_fill_manual(values = c("muggle-born" = "burlywood2", "pure-blood" = "azure2", "half-blood" = "rosybrown2"),
+                    labels = c("muggle-born" = "Маглорожденные", "pure-blood" = "Чистокровные", "half-blood" = "Полукровки"))+
+  labs(x = "Пол", y = "Оценки за зельеварение", fill = "Происхождение") +
+  facet_wrap(vars(sex))+
+  theme_custom
+```
+
+Мы видим, что маглорожденные слизеринцы-мальчики получают в среднем более высокую оценку, чем остальные, но маглорожденные девочки получают более низкие оценки, причем независимо от факультета. Но в Гриффиндоре эта разница болеее значима.
+
+Посмотрим на материалы волшебной палочки.
+
+```{r}
+plot6 <- hogwarts |> 
+  select(house, sex, `Potions exam`, bloodStatus, sex, wandCore)|>
+  ggplot()+
+  geom_boxplot(aes(x = fct_reorder(wandCore, `Potions exam`), y = `Potions exam`, fill = bloodStatus))+
+  scale_fill_manual(values = c("muggle-born" = "burlywood2", "pure-blood" = "azure2", "half-blood" = "rosybrown2"),
+                    labels = c("muggle-born" = "Маглорожденные", "pure-blood" = "Чистокровные", "half-blood" = "Полукровки"))+
+  labs(x = "Палочка", y = "Оценки за зельеварение", fill = "Происхождение") +
+  facet_wrap(vars(sex))+
+  theme_custom
+plot6
+```
+
+
+Маглорожденные девочки с пером феникса в волшебной палочке (за исключением одной) получают систематически низкие оценки по зельеварению, причем с низким разбросом. Такого не наблюдается у мальчиков, поэтому вряд ли это связано с магическими свойствами палочки.
+
+Доподлинно неизвестно, какой материал сердцевины палочки был у Лилли Поттер. У Джеймса была сердечная жила дракона, а у Гарри - перо феникса. Может быть, у Лилли тоже была палочка с пером феникса, и Снейп об этом знал, и поэтому занижал оценки девочкам с такой же палочкой: сравнивал их с Лилли и не любил таких студенток.
+
+
+```{r}
+hogwarts |> 
+  select(house, sex, `Potions exam`, bloodStatus, sex, wandCore)|>
+  ggplot()+
+  geom_boxplot(aes(x = fct_reorder(wandCore, `Potions exam`), y = `Potions exam`, fill = bloodStatus))+
+#  geom_jitter(aes(x = fct_reorder(wandCore, `Potions exam`), y = `Potions exam`, fill = bloodStatus))+
+  scale_fill_manual(values = c("muggle-born" = "burlywood2", "pure-blood" = "azure2", "half-blood" = "rosybrown2"),
+                    labels = c("muggle-born" = "Маглорожденные", "pure-blood" = "Чистокровные", "half-blood" = "Полукровки"))+
+  labs(x = "Факультет", y = "Оценки за зельеварение", fill = "Происхождение") +
+  facet_wrap(vars(house))+
+  theme_custom
+```
+
+Другое наблюдение - среди слизеринцев не наблюдается маглорожденных студентов с палочкой из пера феникса. Может быть, дискриминация, связанная с палочкой, а может быть - просто маглорожденных мало в Слизерине?
+
+Давайте посмотрим внимательнее на всех маглорожденных слизеринцев
+
+```{r}
+hogwarts |> 
+  select(house, sex, `Potions exam`, bloodStatus, sex, wandCore)|>
+  filter(house == "Slytherin", bloodStatus == "muggle-born")
+```
+
+Да, их просто мало, и никого с пером феникса среди них не оказалось, бывает.
+
+Подведем итог.
+
+```{r}
+ggarrange(
+  ggarrange(plot5, plot6, nrow = 2),
+  heights = c(1, 0.5)                
+)
+```
+
+Вывод: Снейп дискриминирует маглорожденных девочек, причем почему-то тех, у кого палочка с пером феникса
+
+(Дополнительные я пока не делала)
