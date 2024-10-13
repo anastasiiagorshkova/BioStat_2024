@@ -1,0 +1,168 @@
+---
+title: "Probability theory - HW 2, task 4"
+author: "Анастасия Горшкова"
+date: "2024-10-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+```
+
+## Скрипт для анализа влияния объема выборки и истинной вероятности на ошибку
+# Для бинарной величины
+
+На лекции мы работали со скриптом, в котором мы производили оценку
+математического ожидания случайной величины (прироста гемоглобина).
+Теперь мы хотим провести виртуальный эксперимент, в котором мы будем
+оценивать вероятность некого события (например полного исцеления после
+приема терапии). По-прежнему, дизайн одногрупповой. Переделайте скрипт
+так, чтобы в нем можно было бы анализировать ошибку в оценке
+вероятности события в зависимости от истинной вероятности и объема
+выборки. Какие закономерности вы можете вычислить, экспериментируя со
+скриптом? Скрипт необходимо загрузить в гитхаб и дать на него ссылку в
+гугл-классе.
+
+```{r}
+p = 0.75 # Задаем истинную вероятность выздороветь
+n_patients <- 20 # Количество добровольцев
+
+effect <- c(1, 0) # Есть или нет эффект от терапии
+probabilities <- c(p, 1-p)
+   # Распределение в генеральной совокупности
+
+df <- data.frame(effect, probabilities)
+
+ggplot(df, aes(x=effect, y=probabilities)) +
+  geom_point() + 
+  geom_segment( aes(x=effect, xend=effect, y=0, yend=probabilities)) +
+  scale_x_continuous(breaks = effect) +
+  theme_bw()
+
+```
+
+
+
+## Однократная оценка по выборке
+
+```{r}
+
+my_group_Hg_upd <- sample(effect, n_patients, replace = TRUE, prob = probabilities) # Результаты добровольцев
+
+print(my_group_Hg_upd)
+
+```
+
+## Набираем статистику
+
+```{r}
+
+n_repeats <- 1000 # Количество повторений эксперимента
+
+df_all_repeats <- data.frame(
+  n_exp = rep(1:n_repeats, each = n_patients),
+  ID = rep(1:n_patients, n_repeats)
+) %>%
+  group_by(n_exp) %>%
+  mutate(Hg_upd = sample(effect, n_patients, replace = TRUE, prob = probabilities)) %>%
+  ungroup()
+
+```
+
+## Ищем количество выздоровевших в каждом эксперименте
+
+```{r}
+
+df_sample_result <- df_all_repeats %>% 
+  group_by(n_exp) %>% 
+  dplyr::summarise(res_Hg_upd = sum(Hg_upd)) %>% 
+  ungroup()
+
+ggplot(df_sample_result, aes(x = res_Hg_upd)) +
+  geom_histogram(color = 'black', fill = 'white', binwidth = 0.2) +
+  theme_bw()
+
+```
+## Ищем процент выздоровевших в каждом эксперименте
+
+```{r}
+df_sample_result_pc <- df_sample_result %>%
+  mutate(res_Hg_upd_pc = res_Hg_upd / n_patients)
+
+ggplot(df_sample_result_pc, aes(x = res_Hg_upd_pc)) +
+  geom_histogram(color = 'black', fill = 'white', binwidth = 0.2) +
+  theme_bw()
+
+```
+
+## Количественные и качественные итоги
+
+
+```{r}
+
+
+error <- sqrt( mean((df_sample_result_pc$res_Hg_upd_pc-p)^2) )
+
+print(error)
+
+
+```
+
+
+Для p = 0.05 и n_patients = 5
+error = 0.09581232
+
+Для p = 0.05 и n_patients = 20
+error = 0.04964877
+
+Для p = 0.05 и n_patients = 50
+error = 0.03067246
+
+
+Для p = 0.5 и n_patients = 5
+error = 0.215963
+
+Для p = 0.5 и n_patients = 20
+error = 0.1113553
+
+Для p = 0.5 и n_patients = 50
+error = 0.07002857
+
+
+Для p = 0.25 и n_patients = 5
+error = 0.1885736
+
+Для p = 0.25 и n_patients = 20
+error = 0.09723682
+
+Для p = 0.25 и n_patients = 50
+error = 0.0589101
+
+## Сделаем таблицу
+
+
+```{r}
+probabilities <- c(0.05, 0.05, 0.05, 0.5, 0.5, 0.5, 0.25, 0.25, 0.25)
+n_patients <- c(5, 20, 50, 5, 20, 50, 5, 20, 50)
+errors <- c(0.09581232, 0.04964877, 0.03067246, 0.215963, 0.1113553, 0.07002857, 0.1885736, 0.09723682, 0.0589101)
+
+df_simulations <- data.frame(probability = probabilities, n_patients = n_patients, error = errors)
+
+df_simulations <- df_simulations  %>%
+  mutate(error_pc = error * 100 / probabilities)
+
+df_simulations
+```
+
+## Сделаем визуализацию 
+
+```{r}
+ggplot(df_simulations, aes(x = n_patients, y = error_pc, color = probability, group = probability)) +
+  geom_line() +
+  geom_point(size = 3) +
+  theme_bw()
+```
+
+
+Получается, ошибка уменьшается при увеличении выборки (неудивительно) и с приближением значений вероятностей исхода к равным значениям (к равномерному распределению вероятностей исхода). То есть чем ближе функция распределения средних к нормальному распределению, тем меньше ошибка оценки вероятности.
