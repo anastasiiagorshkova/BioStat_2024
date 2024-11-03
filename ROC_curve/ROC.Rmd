@@ -1,0 +1,169 @@
+---
+title: "ROC_curve"
+author: "Анастасия Горшкова"
+date: "2024-11-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(flextable)
+library(dplyr)
+library(RColorBrewer)
+library(ggpubr)
+library(purrr)
+library(broom)
+library(corrplot)
+```
+
+##  Загружаем датасет, чистим
+
+```{r}
+data_trauma <- readxl::read_xlsx("data/trauma.xlsx") %>%
+    mutate(across(where(is.character), as.factor),
+           across(c(id, Death), as.factor),
+           Height = as.numeric(sub('"', '', Height)) * 2.54 / 100, # convert height to m
+           Weight = Weight / 2.2,
+           Hb = na_if(Hb, 0)
+           ) 
+
+df %>%
+  glimpse()
+summary(df)
+```
+
+Заменяем на NA совсем нереалистичные значения и удаляем строки с ними
+
+```{r}
+df <- df %>%
+  mutate(
+    # Заменяем SBP и DBP на NA, если SPB меньше DBP
+    SBP = ifelse(SBP < DBP, NA, SBP),
+    DBP = ifelse(SBP < DBP, NA, DBP),
+    Height = ifelse(Height < 50, NA, Height),  # Заменяем height на NA, если меньше 50
+    Weight = ifelse(Weight < 20, NA, Weight),  # Заменяем weight на NA, если меньше 10
+    Hb = ifelse(Hb < 1, NA, Hb)
+    )
+df <- na.omit(df)
+summary(df)
+```
+##  1. Дайте описательную статистику для переменных, включённых в датасет. 
+Дополнительно 
+рассчитайте, у какого количества пациентов и в каком проценте случаев у пациентов был
+снижен уровень гемоглобина? Используйте следующие референтные значения (Мужчины:
+13.5–16 г/дл, Женщины: 12–14 г/дл).
+
+```{r}
+statistics <- list(
+      `Количество субъектов` = ~length(.x) %>% as.character(),
+#    `Количество (есть данные)` = ~sum(!is.na(.x)) %>% as.character(),
+#      `Нет данных` = ~sum(is.na(.x)) %>% as.character(),
+      `Ср. знач.` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", mean(.x, na.rm = TRUE) %>% round(2) %>% as.character()),
+      `Станд. отклон.` = ~ifelse(sum(!is.na(.x)) < 3, "Н/П*", sd(.x, na.rm = TRUE) %>% round(2) %>% as.character()),
+      `95% ДИ для среднего` = ~ifelse(sum(!is.na(.x)) < 3, "Н/П*", paste0(ci_min(.x) %>% round(2), " - ", ci_max(.x) %>% round(2))),
+      `мин. - макс.` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", paste0(min(.x, na.rm = TRUE) %>% round(2), " - ", max(.x, na.rm = TRUE) %>% round(2))),
+      `Медиана` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", median(.x, na.rm = TRUE) %>% round(2) %>% as.character()),
+      `Q1 - Q3` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", paste0(quantile(.x, 0.25, na.rm = TRUE) %>% round(2), " - ", quantile(.x, 0.75, na.rm = TRUE) %>% round(2)))
+)
+```
+
+
+```{r}
+ci_min <- function(x) {
+  x <- na.omit(x)
+  se <- sd(x) / sqrt(length(x))
+  error_margin <- qt(0.975, df = length(x) - 1) * se # t-критическое значение для 95%
+  ci_min <- mean(x) - error_margin
+  return(ci_min)
+}
+
+ci_max <- function(x) {
+  x <- na.omit(x)
+  se <- sd(x) / sqrt(length(x))
+  error_margin <- qt(0.975, df = length(x) - 1) * se # t-критическое значение для 95%
+  ci_max <- mean(x) + error_margin
+  return(ci_max)
+}
+
+```
+
+```{r}
+df %>%
+  select(where(is.numeric)) %>%
+  summarize(across(everything(), statistics)) %>%
+  pivot_longer(cols = everything(), names_to = "name", values_to = "value") %>%
+  separate(name, into = c("variable", "statistics"), sep = "_") %>%
+  pivot_wider(names_from = statistics, values_from = value) %>%
+  flextable() %>%
+  theme_box() %>%
+  align(align = "center", part = "all") %>%
+  merge_v("variable")
+```
+
+```{r}
+low_Hb_men <- 13.5
+low_Hb_women <- 12
+
+# Расчёт количества и процента пациентов с пониженным уровнем гемоглобина
+df %>%
+  mutate(
+    low_Hb = case_when(
+      Sex == "Male" & Hb < low_Hb_men ~ TRUE,
+      Sex == "Female" & Hb < low_Hb_women ~ TRUE,
+      TRUE ~ FALSE
+    )
+  ) %>%
+  summarize(
+    total_patients = n(),
+    low_Hb_count = sum(low_Hb),
+    low_Hb_percent = (low_Hb_count / total_patients) * 100
+  )
+```
+
+Результат: из 868 пациентов, оставшихся после фильтрации, у 31 из них наблюдается сниженный гемоглобин, что составляет 3,57%
+
+
+# Добавляем ИМТ
+
+Добавим параметр BMI в таблицу.
+
+```{r}
+df$BMI <- round(df$Weight / ((df$Height/ 100)^2), 2)
+summary(df)
+```
+
+
+```{r, fig.height=8, fig.width=24, message=FALSE}
+
+full_model <- glm(Страховка ~ Здоровье + Возраст + Ограничения + Пол + Брак + Самозанятость +
+                    Семья + Регион + Этничность + Образование, data = data_clean, family = binomial)
+
+main_model <- glm(Страховка ~ Возраст + Образование + Семья + Самозанятость + Регион,
+             data = data_clean, family = binomial)
+
+data_clean$full_model <- predict(full_model, type = "response")
+data_clean$main_model <- predict(main_model, type = "response")
+
+data_clean %>% 
+  select(Возраст ,full_model,main_model, Страховка) %>% 
+  pivot_longer(!Страховка, names_to = "Переменная") %>% 
+  group_by(Переменная) %>% 
+  summarise(AUC = roc(Страховка ~ value, ci = T)$ci[2] %>% signif(3),
+            "95% ДИ" = paste0(roc(Страховка ~ value, ci = T)$ci[1] %>% signif(3), 
+                              " - ", roc(Страховка ~ value, ci = T)$ci[3] %>% signif(3) )) %>% 
+  arrange(desc(AUC)) %>% 
+  flextable() %>% 
+  autofit() %>% 
+  theme_box()
+
+
+ggarrange(roc(Страховка ~ Возраст, data_clean) %>%
+            ggroc()+ labs(title = "ROC-кривая для возраста") + theme_custom,
+          roc(Страховка ~ full_model, data_clean) %>%
+           ggroc()+ labs(title = "ROC-кривая для полной модели") + theme_custom,
+            roc(Страховка ~ main_model, data_clean) %>%
+            ggroc()+ labs(title = "ROC-кривая для основной модели") + theme_custom,
+          nrow = 1, widths = c(1, 1, 1))
+```
+
