@@ -1,0 +1,496 @@
+---
+title: "Задача 4"
+author: "Анастасия Горшкова"
+date: "2024-11-03"
+output: html_document
+---
+
+```{r include=FALSE}
+knitr::opts_chunk$set()
+
+library(tidyverse)
+library(flextable)
+library(ggpubr)
+
+data <- read.csv("CrohnD.csv") %>% 
+  mutate_if(is.character, as.factor)
+```
+
+## Обзор данных
+
+Описание датасета можно найти по [ссылке](https://vincentarelbundock.github.io/Rdatasets/doc/robustbase/CrohnD.html).
+
+A data frame with 117 observations on the following 9 variables.
+
+1. ID
+the numeric patient IDs
+
+2. nrAdvE
+the number of adverse events
+
+3. BMI
+Body MASS Index
+
+4. height
+in cm
+
+5. country
+a factor with levels 0 and 1
+
+6. sex
+the person's gender, a binary factor with levels M F
+
+7. age
+in years, a numeric vector
+
+8. weight
+in kilograms, a numeric vector
+
+9. treat
+how CD was treated: a factor with levels 0, 1 and 2, meaning placebo, drug 1 and drug 2.
+
+
+```{r}
+glimpse(data)
+```
+
+```{r}
+# Выводим статистику
+summary(data)
+
+```
+
+Количественные переменные: 
+BMI
+height
+weight
+age
+nrAdvE
+
+Факторные:
+sex
+country
+
+## Строим qq-plots
+
+```{r}
+age_qqplot <- data %>%
+  group_by(treat) %>%
+  ggplot(aes(sample = age)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения возраста") +
+  facet_wrap(~treat) +
+  theme_classic()
+
+BMI_qqplot <- data %>%
+  group_by(treat) %>%
+  ggplot(aes(sample = BMI)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения BMI") +
+  facet_wrap(~treat) +
+  theme_classic()
+
+height_qqplot <- data %>%
+  group_by(treat) %>%
+  ggplot(aes(sample = height)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения роста") +
+  facet_wrap(~treat) +
+  theme_classic()
+
+weight_qqplot <- data %>%
+  group_by(treat) %>%
+  ggplot(aes(sample = weight)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения веса") +
+  facet_wrap(~treat) +
+  theme_classic()
+
+nrAdvE_qqplot <- data %>%
+  group_by(treat) %>%
+  ggplot(aes(sample = nrAdvE)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения nrAdvE") +
+  facet_wrap(~treat) +
+  theme_classic()
+
+ggsave(filename = "age_qqplot.png", plot = age_qqplot, 
+       width = 8, height = 6, dpi = 300)
+
+ggsave(filename = "BMI_qqplot.png", plot = BMI_qqplot, 
+       width = 8, height = 6, dpi = 300)
+
+ggsave(filename = "height_qqplot.png", plot = height_qqplot, 
+       width = 8, height = 6, dpi = 300)
+
+ggsave(filename = "weight_qqplot.png", plot = weight_qqplot, 
+       width = 8, height = 6, dpi = 300)
+
+ggsave(filename = "nrAdvE_qqplot.png", plot = nrAdvE_qqplot, 
+       width = 8, height = 6, dpi = 300)
+
+```
+
+Без разбивки по treat 
+
+```{r}
+age_qqplot2 <- data %>%
+  ggplot(aes(sample = age)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения возраста") +
+  theme_classic()
+
+ggsave(filename = "age_qqplot2.png", plot = age_qqplot2, 
+       width = 8, height = 6, dpi = 300)
+
+BMI_qqplot2 <- data %>%
+  ggplot(aes(sample = BMI)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения ИМТ") +
+  theme_classic()
+
+ggsave(filename = "BMI_qqplot2.png", plot = BMI_qqplot2, 
+       width = 8, height = 6, dpi = 300)
+
+height_qqplot2 <- data %>%
+  ggplot(aes(sample = height)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения роста") +
+  theme_classic()
+
+ggsave(filename = "height_qqplot2.png", plot = height_qqplot2, 
+       width = 8, height = 6, dpi = 300)
+
+weight_qqplot2 <- data %>%
+  ggplot(aes(sample = weight)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения веса") +
+  theme_classic()
+
+ggsave(filename = "weight_qqplot2.png", plot = weight_qqplot2, 
+       width = 8, height = 6, dpi = 300)
+
+nrAdvE_qqplot2 <- data %>%
+  ggplot(aes(sample = nrAdvE)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения кол-ва побочных эффектов") +
+  theme_classic()
+
+ggsave(filename = "nrAdvE_qqplot2.png", plot = nrAdvE_qqplot2, 
+       width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+weight_1 <- data %>%
+  ggplot(aes(x = nrAdvE, y = weight)) +
+  geom_point()+
+  geom_smooth(method = lm) + 
+  labs(x = 'Количество НЯ') +
+  theme_bw()
+
+BMI_1 <- data %>%
+  ggplot(aes(x = nrAdvE, y = BMI)) +
+  geom_point()+
+  geom_smooth(method = lm) +
+  labs(x = 'Количество НЯ') +
+  facet_grid(.~treat) +
+  theme_bw()
+
+height_1 <- data %>%
+  ggplot(aes(x = nrAdvE, y = height)) +
+  geom_point()+
+  geom_smooth(method = lm) +
+  labs(x = 'Количество НЯ') +
+ theme_bw()
+
+age_1 <- data %>%
+  ggplot(aes(x = nrAdvE, y = age)) +
+  geom_point()+
+  geom_smooth(method = lm) +
+  labs(x = 'Количество НЯ') +
+ theme_bw()
+
+weight_1_2 <- weight_1+
+ facet_grid(.~treat)
+
+BMI_1_2 <-BMI_1+
+ facet_grid(.~treat)
+
+
+height_1_2 <-height_1+
+ facet_grid(.~treat)
+
+age_1_2 <-age_1+
+ facet_grid(.~treat)
+
+ggarrange(plotlist = list(weight_1, weight_1_2), 
+          nrow = 2)
+
+ggarrange(plotlist = list(height_1, height_1_2), 
+          nrow = 2)
+
+ggarrange(plotlist = list(BMI_1, BMI_1_2), 
+          nrow = 2)
+
+ggarrange(plotlist = list(age_1, age_1_2), 
+          nrow = 2)
+```
+weight_1_2 <- weight_1+
+ facet_grid(.~treat)
+
+BMI_1_2 <-BMI_1+
+ facet_grid(.~treat)
+
+
+height_1_2 <-height_1+
+ facet_grid(.~treat)
+
+age_1_2 <-age_1+
+ facet_grid(.~treat)
+
+ggarrange(plotlist = list(weight_1, weight_1_2), 
+          nrow = 2)
+
+ggarrange(plotlist = list(height_1, height_1_2), 
+          nrow = 2)
+
+ggarrange(plotlist = list(BMI_1, BMI_1_2), 
+          nrow = 2)
+
+ggarrange(plotlist = list(age_1, age_1_2), 
+          nrow = 2)
+
+
+## Делаем проверку на нормальность Шапиро-Уилка
+
+```{r}
+data %>%
+  group_by(treat) %>%
+  summarise(across(where(is.numeric), 
+                   ~ list(shapiro.test(.)), 
+                   .names = "shapiro_{col}")) %>%
+  pivot_longer(-treat, 
+               names_to = c(".value", "variable"), 
+               names_sep = "_") %>%
+  mutate(w_shapiro = map_dbl(shapiro, ~ .x$statistic),
+         p_value = map_dbl(shapiro, ~ .x$p.value)) %>%
+  select(-shapiro) %>%  # Удаляем столбец с объектом теста Шапиро
+  filter(!variable %in% c("rownames", "ID")) %>%  # Удаляем строки с variable = "rownames" или "ID"
+  mutate(p_value = formatC(p_value, digits = 3))%>%
+  group_by(variable) %>%  # Группируем по переменной variable
+  select(variable, everything()) %>%  # Делаем variable первым столбцом
+  arrange(variable)%>%
+  flextable() %>%
+  theme_box() %>%
+  align(align="center", part="all") %>%
+  merge_v(c("treat"))
+```
+
+
+```{r}
+data %>%
+  summarise(across(where(is.numeric), 
+                   ~ list(shapiro.test(.)), 
+                   .names = "shapiro_{col}")) %>%
+  pivot_longer(cols = everything(),  # Преобразование всех столбцов
+               names_to = c(".value", "variable"), 
+               names_sep = "_") %>%
+  mutate(w_shapiro = map_dbl(shapiro, ~ .x$statistic),
+         p_value = map_dbl(shapiro, ~ .x$p.value)) %>%
+  select(-shapiro) %>%  # Удаляем столбец с объектом теста Шапиро
+  filter(!variable %in% c("rownames", "ID")) %>%  # Удаляем строки с variable = "rownames" или "ID"
+  mutate(p_value = formatC(p_value, digits = 3)) %>%
+  select(variable, everything()) %>%  # Делаем variable первым столбцом
+  arrange(variable) %>%
+  flextable() %>%
+  theme_box() %>%
+  align(align = "center", part = "all")
+```
+
+## Интерпретация проверки на нормальность
+
+Не нормально распределены:
+BMI
+nrAdvE
+
+Для них Краскелл-Уоллис
+
+Нормально:
+weight
+age
+height
+
+Для них Анова
+
+Изменено: для всего Краскелл-Уоллис
+
+По Treat:
+
+```{r}
+quant_vars <- c("weight", "age", "height", "BMI", "nrAdvE")
+kruskal_results <- map(quant_vars, ~ kruskal.test(as.formula(paste(.x, "~ treat")), data = data) %>%
+                         tidy() %>%
+                         mutate(variable = .x))
+kruskal_results_df <- bind_rows(kruskal_results)
+kruskal_results_df %>%
+  flextable() %>%
+  theme_box() %>%
+  align(align = "center", part = "all")
+```
+
+
+По treat
+
+Хи-квадрат
+
+```{r}
+
+# Проведение хи-квадрат тестов
+chi_square_sex <- chisq.test(table(data$treat, data$sex))
+chi_square_country <- chisq.test(table(data$treat, data$country))
+
+# Сбор результатов тестов в датафрейм
+chi_square_results <- data.frame(
+  Variable = c("sex", "country"),
+  Chi_square = c(chi_square_sex$statistic, chi_square_country$statistic),
+  p_value = c(chi_square_sex$p.value, chi_square_country$p.value),
+  df = c(chi_square_sex$parameter, chi_square_country$parameter)
+)
+
+# Форматирование p-значений
+chi_square_results$p_value <- formatC(chi_square_results$p_value, format = "e", digits = 3)
+
+# Создание flextable
+chi_square_table <- flextable(chi_square_results) %>%
+  theme_box() %>%
+  align(align = "center", part = "all") %>%
+  set_header_labels(Variable = "Variable",
+                    Chi_square = "Chi-Square Statistic",
+                    p_value = "p-Value",
+                    df = "Degrees of Freedom") %>%
+  autofit()
+
+# Вывод таблицы
+chi_square_table
+
+
+```
+
+Превращаем количество исходов в факторную переменную
+
+
+```{r}
+data_group <- data %>%
+  mutate('Группы' = case_when(
+    nrAdvE == 0 ~ 'No',
+    between(nrAdvE, 1,2) ~ 'low',
+    between(nrAdvE, 3,12) ~ 'high'
+  ) %>%
+  as.factor())
+
+```
+
+Краскел-Уоллис
+
+```{r}
+quant_vars <- c("weight", "age", "height", "BMI")
+kruskal_results2 <- map(quant_vars, ~ kruskal.test(as.formula(paste(.x, "~ Группы")), data = data_group) %>%
+                         tidy() %>%
+                         mutate(variable = .x))
+kruskal_results2_df <- bind_rows(kruskal_results)
+kruskal_results2_df %>%
+  flextable() %>%
+  theme_box() %>%
+  align(align = "center", part = "all")
+```
+
+```{r}
+# Проведение хи-квадрат тестов
+chi_square_sex <- chisq.test(table(data_group$Группы, data$sex))
+chi_square_country <- chisq.test(table(data_group$Группы, data$country))
+chi_square_treat <- chisq.test(table(data_group$Группы, data$treat))
+
+# Сбор результатов тестов в датафрейм
+chi_square_results <- data.frame(
+  Variable = c("sex", "country", "treat"),
+  Chi_square = c(chi_square_sex$statistic, chi_square_country$statistic, chi_square_treat$statistic),
+  p_value = c(chi_square_sex$p.value, chi_square_country$p.value, chi_square_treat$p.value),
+  df = c(chi_square_sex$parameter, chi_square_country$parameter, chi_square_treat$parameter)
+)
+
+# Форматирование p-значений
+chi_square_results$p_value <- formatC(chi_square_results$p_value, digits = 3)
+
+# Создание flextable
+flextable(chi_square_results) %>%
+  theme_box() %>%
+  align(align = "center", part = "all") %>%
+  set_header_labels(Variable = "Variable",
+                    Chi_square = "Chi-Square Statistic",
+                    p_value = "p-Value",
+                    df = "Degrees of Freedom") %>%
+  autofit()
+```
+
+
+Попарные сравнения т-тестом
+
+```{r}
+quant_vars <- c("weight", "age", "height", "BMI", "nrAdvE")
+# Проведение попарных t-тестов для каждой переменной, сгруппированной по treat
+pairwise_results <- map(quant_vars, ~ {
+  # Выполнение попарного t-теста, сгруппированного по treat
+  test_result <- pairwise.t.test(data_group[[.x]], data_group$treat, p.adjust.method = "none")
+  
+  # Преобразование результата в tibble
+  tidy_result <- as.data.frame(as.table(test_result$p.value)) %>%
+    filter(!is.na(Freq)) %>%  # Удаление значений NA
+    rename(group1 = Var1, group2 = Var2, p.value = Freq) %>%
+    mutate(variable = .x)  # добавление имени переменной
+  
+  return(tidy_result)
+})
+
+# Объединение результатов в один датафрейм
+pairwise_results_df <- bind_rows(pairwise_results)
+```
+
+рассмотрим, будет ли разный BMI в зависимости от adverse effects только у тех, кому давали препарат 1
+
+```{r}
+# Отфильтруем данные только для тех, у кого treat = "d1"
+data_filtered <- data_group %>% filter(treat == "d1")
+
+# Проведение попарных t-тестов для переменной BMI, сгруппированной по Группы
+bmi_pairwise_results <- pairwise.t.test(data_filtered$BMI, data_filtered$Группы, p.adjust.method = "holm")
+
+# Преобразование результата в удобный для чтения формат (таблица)
+bmi_pairwise_results_df <- as.data.frame(as.table(bmi_pairwise_results$p.value)) %>%
+  filter(!is.na(Freq)) %>%  # Удаление значений NA
+  rename(group1 = Var1, group2 = Var2, p.value = Freq)
+
+# Вывод результатов
+print(bmi_pairwise_results_df)
+```
+
+

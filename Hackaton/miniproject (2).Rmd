@@ -1,0 +1,931 @@
+---
+title: "минипроект"
+author: "Group 1"
+date: "2024-11-03"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+library(flextable)
+library(rstatix)
+library(pROC)
+library(gtsummary)
+library(GGally)
+library(tidyverse)
+library(corrr)
+library(psych)
+library(ggplot2)
+library(dplyr)
+library(ggcorrplot)
+library(ggpubr)
+library(broom)
+library(corrplot)
+
+```
+
+## загрузка датасета
+
+```{r cars}
+data <- read.csv("CrohnD.csv") %>%  
+  mutate_if(is.character, as.factor) %>% 
+  mutate('Группы' = case_when(
+    nrAdvE == 0 ~ 'No',
+    between(nrAdvE, 1,2) ~ 'low',
+    between(nrAdvE, 3,12) ~ 'high'
+  ) %>%
+  as.factor())
+summary(data)
+```
+
+## Описательные статистики
+
+```{r statistics_num, echo=FALSE}
+# вначеле сделаем лист статистик. Перед название каждой переменной добавим "__"
+
+statistics_num <- list(
+    # Количество значений
+  `__Количество значений` = ~ length(.x) %>% as.character(),
+    # Количество пропущенных значений
+  `__Количество пропущенных значений` = ~ sum(is.na(.x)) %>% as.character(),
+    # Среднее значение (если нет значений, возвращает "Н/П*")
+  `__Ср. знач.` = ~ ifelse(
+        sum(!is.na(.x)) == 0,
+        "Н/П*",
+        mean(.x, na.rm = TRUE) %>% round(2) %>% as.character()
+      ),
+    # Медиана (если нет значений, возвращает "Н/П*")
+  `__Медиана` = ~ ifelse(
+        sum(!is.na(.x)) == 0,
+        "Н/П*",
+        median(.x, na.rm = TRUE) %>% round(2) %>% as.character()
+      ),
+    # Стандартное отклонение (если менее 3 значений, возвращает "Н/П*")
+  `__Станд. отклон.` = ~ ifelse(
+        sum(!is.na(.x)) < 3,
+        "Н/П*",
+        sd(.x, na.rm = TRUE) %>% round(2) %>% as.character()
+      ),
+    # Первый и третий квартиль (если нет значений, возвращает "Н/П*")
+  `__Q1 - Q3` = ~ ifelse(
+      sum(!is.na(.x)) == 0,
+      "Н/П*",
+      paste0(
+        quantile(.x, 0.25, na.rm = TRUE) %>% round(2),
+        " - ",
+        quantile(.x, 0.75, na.rm = TRUE) %>% round(2)
+      ) %>% as.character()
+    ),
+    # Интерквартильный размах (если нет значений, возвращает "Н/П*")
+  `__IQR` = ~ ifelse( 
+        sum(!is.na(.x)) == 0,
+        "Н/П*",
+        IQR(.x, na.rm = TRUE) %>% round(2) %>% as.character()
+      ),
+    # Минимум (если нет значений, возвращает "Н/П*")
+  `__минимум` = ~ ifelse(
+    sum(!is.na(.x)) == 0,
+    "Н/П*",
+     min(.x, na.rm = TRUE) %>% round(2) %>% as.character()
+  ),
+   # Максимум (если нет значений, возвращает "Н/П*")
+  `__максимум` = ~ ifelse(
+    sum(!is.na(.x)) == 0,
+    "Н/П*",
+     max(.x, na.rm = TRUE) %>% round(2) %>% as.character()
+  ),
+  # 95% ДИ (если нет значений, возвращает "Н/П*")
+ `__95% ДИ` = ~ ifelse(
+    sum(!is.na(.x)) == 0,
+    "Н/П*",
+    paste0(
+        t.test(.x)$conf.int[1] %>% round(2),
+        "   ",
+        t.test(.x)$conf.int[2] %>% round(2)
+      ) %>% as.character()
+    
+  )
+)
+```
+
+```{r}
+#  Выбираем переменные для анализа 
+ data %>%
+  select( treat, where(is.numeric) & -c(rownames, ID)) %>%
+   # сгруппируем по treat
+  group_by(treat) %>%
+   # добавим статистик
+  summarize(across(where(is.numeric), statistics_num )) %>% 
+   # сделаем таблицу в длинном формате 
+  pivot_longer(!treat) %>% 
+  separate(name, into=c("Переменная", "Статистика"), sep= "___")  %>%
+  flextable() %>% 
+  theme_box() %>% 
+  align(align = "center", part = "all") %>% 
+  merge_v(c("treat", "Переменная"))  
+
+```
+
+
+
+```{r}
+# Категориальные переменные 
+
+
+get_cat_table_one_variable <- function(factor_data, group_variable, variable_name) {
+    
+    factor_data %>%
+    #  Считаем количество наблюдений в каждой группе используя относительны названия переменных .data
+      count(.data[[group_variable]], .data[[variable_name]], .drop = FALSE) %>%
+     
+      #  Считаем Относительное количество наблюдений  
+      mutate(`Доля наблюдений от общего кол-ва` = (n / sum(n)) %>% round(4) %>% `*`(100) %>% str_c("%")) %>%
+      
+      group_by(.data[[group_variable]]) %>%
+    #  Считаем Относительное количество наблюдений  внутри группы по группирурующей переменной
+      mutate(`доля наблюдений в группе` = (n / sum(n)) %>% round(4) %>% `*`(100) %>% str_c("%")) %>%
+     rename(`Количество наблюдений` = n) %>% 
+   
+      # mutate(`95% ДИ для доли внутри группы` =  paste0(
+      #   prop.test(
+      #     table( factor_data[[group_variable]], factor_data[[variable_name]])
+      #       )$conf.int[1] %>% round(3),
+      #   "   ",
+      #    prop.test(
+      #     table(factor_data[[group_variable]], factor_data[[variable_name]])
+      #       )$conf.int[2] %>% round(3)
+      #     )) %>% 
+     ungroup() %>% 
+    mutate( Variable = variable_name) %>% 
+     rename(Value := variable_name,
+             Group := group_variable)
+              
+            
+               
+               
+    
+}
+
+########## ПРОБЛЕМА:Нужно выбрать только те переменные, у которых только 2 градации фактора, тоесть 2 уникальные переменные length(unique()) == 2 НУжно написать функцию
+
+is_var_binar <- function(x) length(unique(x)) == 2
+    
+  
+data %>% 
+    select(!treat) %>% 
+    select(where(is_var_binar )) %>% 
+    names() %>%
+    map_dfr(function(variable_name) get_cat_table_one_variable(data, "treat", variable_name)) %>%
+    select(Variable, Group, everything()) %>% 
+     flextable() %>%
+  theme_box() %>%
+  align(align = "center", part = "all") %>%
+  merge_v(c("Group", "Variable")) %>%
+  merge_v("Group", target = "95% ДИ для доли внутри группы")
+  
+ 
+```
+
+## Задание 2 
+Визуализировать распределения значений признаков средствами ggplot2 и сопутствующих пакетов. 
+
+
+```{r, fig.height=30, fig.width=30, message=FALSE, warning=FALSE}
+pairs <- ggpairs(data %>% select(-ID, -rownames))+
+  theme(
+    text = element_text(size=20),
+    axis.text = element_text(size = 20),
+    legend.title = element_text(size = 20),
+    legend.text = element_text(size = 20),
+    panel.background = element_rect(fill = "white", color = 'black'),
+    plot.background = element_rect(fill = "white"),
+    panel.grid.major = element_line(color = "gray"),
+    panel.grid.minor = element_line(color = "lightgray"),
+    strip.text = element_text(size = 35),
+    plot.title = element_text(size=50, face='bold')
+  ) +
+  labs(title = "Распределение значений признаков")
+
+pairs
+```
+
+
+
+
+
+```{r include=FALSE}
+# Создадим тему для графиков
+custom_th <- theme(
+    text = element_text(size=20),
+    axis.text = element_text(size = 20),
+    legend.title = element_text(size = 20),
+    legend.text = element_text(size = 20),
+    panel.background = element_rect(fill = "white", color = 'black'),
+    plot.background = element_rect(fill = "white"),
+    panel.grid.major = element_line(color = "gray"),
+    panel.grid.minor = element_line(color = "lightgray"),
+    strip.text = element_text(size = 15),
+    plot.title = element_text(size=20, face='bold')
+  )
+```
+
+### Распределение по полу
+```{r}
+data %>%
+  mutate(
+    sex = data$sex %>% str_replace_all(c('F' = 'Женщина', 'M' = 'Мужчина'))
+    ) %>% 
+  ggplot(aes(x = sex, fill = sex)) +
+    geom_bar(col='black') +
+    labs(title = "Распределение испытуемых по полу", x = "Sex", y = "Count") +
+    theme_minimal() +
+    xlab("Пол") +
+    ylab("Число испытуемых") +
+    scale_fill_discrete('Пол') +
+    theme(
+          axis.text.x = element_blank(),
+          axis.title.x = element_blank()
+          ) +
+  custom_th
+```
+### Распределение по стране
+```{r}
+ggplot(data, aes(x = country, fill = country)) +
+  geom_bar(color = "black") +
+  labs(title = "Распределение испытуемых по стране", x = "Country", y = "Count") +
+  theme_minimal()+
+  xlab("Страна") +
+  ylab("Число испытуемых") +
+  scale_fill_discrete('Страна', labels = c('1', '2')) +
+  theme(
+          axis.text.x = element_blank(),
+          axis.title.x = element_blank()
+          ) +
+  custom_th
+```
+
+### Зависимость числа неблагоприятных событий от остальных признаков
+
+```{r fig.height=7, fig.width=12}
+data %>%
+  mutate(
+    treat = data$treat %>% str_replace_all(c('d1' = 'Препарат 1', 'd2' = 'Препарат 2', 'placebo' = 'Плацебо'))
+    ) %>% 
+  ggplot(aes(x = treat, y = nrAdvE, fill = treat)) +
+    geom_boxplot(alpha = 0.7) +
+    labs(title = "Распределение числа неблагоприятных событий по типу лечения", x = "Treatment", y = "Number of Adverse Events") +
+    theme_minimal() +
+    scale_y_continuous(breaks=seq(0, 12.5, 1))+
+    xlab("Тип лечения") +
+    ylab("Число неблагоприятных событий") +
+    scale_fill_discrete('Тип лечения') +
+  custom_th +
+  theme(axis.title.x = element_blank())
+```
+
+```{r fig.height=9, fig.width=9}
+data %>%
+  mutate(
+    sex = data$sex %>% str_replace_all(c('F' = 'Женщина', 'M' = 'Мужчина'))
+    ) %>% 
+ggplot(aes(x = sex, y = nrAdvE, fill = sex)) +
+  geom_boxplot(alpha = 0.7) +
+  labs(title = "Распределение числа неблагоприятных событий по полу", x = "Sex", y = "Number of Adverse Events") +
+  theme_minimal() +
+  scale_y_continuous(breaks=seq(0, 12.5, 1))+
+  xlab("Пол") +
+  ylab("Число неблагоприятных событий") +
+  scale_fill_discrete("Пол") +
+  theme(
+          axis.text.x = element_blank(),
+          axis.title.x = element_blank()
+          )+
+  custom_th
+```
+
+```{r fig.height=6, fig.width=10}
+data %>%
+  mutate(
+    sex = data$sex %>% str_replace_all(c('F' = 'Женщина', 'M' = 'Мужчина')),
+    treat = data$treat %>% str_replace_all(c('d1' = 'Препарат 1', 'd2' = 'Препарат 2', 'placebo' = 'Плацебо'))
+    ) %>% 
+  ggplot(aes(x = sex, y = nrAdvE, fill = sex)) +
+    geom_boxplot(alpha = 0.7) +
+    labs(title = "Распределение числа неблагоприятных событий по полу", x = "Sex", y = "Number of Adverse Events") +
+    theme_minimal() +
+    scale_y_continuous(breaks=seq(0, 12.5, 1))+
+    xlab("Пол") +
+    ylab("Число неблагоприятных событий") +
+    facet_wrap(~treat) +
+    scale_fill_discrete("Пол") +
+    theme(
+            axis.text.x = element_blank(),
+            axis.title.x = element_blank()
+            ) +
+  custom_th
+```
+```{r fig.height=9, fig.width=12}
+ggplot(data, aes(x = country, y = nrAdvE, fill = country)) +
+  geom_boxplot(alpha = 0.7) +
+  labs(title = "Распределение числа неблагоприятных событий по стране", x = "Country", y = "Number of Adverse Events") +
+  theme_minimal() +
+  scale_y_continuous(breaks=seq(0, 12.5, 1))+
+  xlab("Страна") +
+  ylab("Число неблагоприятных событий") +
+  scale_fill_discrete("Страна", labels = c('1', '2')) +
+  theme(axis.text.x = element_blank(), axis.title.x = element_blank()) +
+  custom_th
+```
+
+```{r fig.height=7, fig.width=10}
+ggplot(data, aes(x = country, y = nrAdvE, fill = country)) +
+  geom_boxplot(alpha = 0.7) +
+  labs(title = "Распределение числа неблагоприятных событий по стране", x = "Country", y = "Number of Adverse Events") +
+  theme_minimal() +
+  scale_y_continuous(breaks=seq(0, 12.5, 1))+
+  xlab("Страна") +
+  ylab("Число неблагоприятных событий") +
+  facet_wrap(~treat) +
+  scale_fill_discrete("Страна", labels = c('1', '2')) +
+  theme(axis.text.x = element_blank(), axis.title.x = element_blank()) +
+  custom_th
+```
+```{r fig.height=7, fig.width=10}
+data %>%
+  mutate(
+    treat = data$treat %>% str_replace_all(c('d1' = 'Препарат 1', 'd2' = 'Препарат 2', 'placebo' = 'Плацебо'))
+    ) %>% 
+ggplot(aes(x = nrAdvE, fill = treat)) +
+  geom_density(alpha=0.3, col=NA) +
+  scale_y_continuous(breaks=seq(0, 0.35, 0.025)) +
+  scale_x_continuous(breaks=seq(0, 12.5, 1)) +
+  theme_minimal() +
+  xlab("Число неблагоприятных событий") +
+  ylab("Плотность распределения") +
+  custom_th +
+  scale_fill_discrete('Тип лечения')+
+  labs(title='Плотность распределения испытуемых по типу лечения')
+```
+
+
+
+
+
+##  Задание 3
+Подобрать и реализовать средства для визуальной оценки взаимосвязи между числом НЯ и собранными признаками пациентов.
+
+
+
+
+### Матрица корреляций
+```{r}
+data %>%
+  select(where(is.numeric)) %>%
+  corr.test(method = "spearman") -> corr_data
+
+ggcorrplot(corr_data$r, p.mat = corr_data$p, insig = "blank", lab = TRUE)
+```
+# Сетевой график
+```{r}
+
+data_clear <- data%>%
+  select(where(is.numeric))
+
+data_cor <- cor(data_clear) 
+data_cor
+
+
+data_cor %>% 
+  network_plot(min_cor = .0)
+```
+#Матрица корреляций с визуализацией
+```{r}
+
+ggpairs(data_clear, progress = F)
+```
+
+
+
+
+#Визуализация для групп с НЯ
+```{r}
+ggplot(data) +
+  geom_point(aes(x = Группы, y = BMI)) +
+  facet_grid(.~treat) +
+  theme_bw()
+
+ggplot(data) +
+  geom_point(aes(x = Группы, y = weight)) +
+  facet_grid(.~treat) +
+  theme_bw()
+
+ggplot(data) +
+  geom_point(aes(x = Группы, y = height)) +
+  facet_grid(.~treat) +
+  theme_bw()
+
+ggplot(data) +
+  geom_point(aes(x = Группы, y = age)) +
+  facet_grid(.~treat) +
+  theme_bw()
+```
+
+```{r}
+
+
+weight_1 <- data %>%
+  ggplot(aes(x = nrAdvE, y = weight)) +
+  geom_point()+
+  geom_smooth(method = lm) + 
+  labs(x = 'Количество НЯ') +
+  theme_bw()
+
+BMI_1 <- data %>%
+  ggplot(aes(x = nrAdvE, y = BMI)) +
+  geom_point()+
+  geom_smooth(method = lm) +
+  labs(x = 'Количество НЯ') +
+  facet_grid(.~treat) +
+  theme_bw()
+
+height_1 <- data %>%
+  ggplot(aes(x = nrAdvE, y = height)) +
+  geom_point()+
+  geom_smooth(method = lm) +
+  labs(x = 'Количество НЯ') +
+ theme_bw()
+
+age_1 <- data %>%
+  ggplot(aes(x = nrAdvE, y = age)) +
+  geom_point()+
+  geom_smooth(method = lm) +
+  labs(x = 'Количество НЯ') +
+ theme_bw()
+
+weight_1_2 <- weight_1+
+ facet_grid(.~treat)
+
+BMI_1_2 <-BMI_1+
+ facet_grid(.~treat)
+
+
+height_1_2 <-height_1+
+ facet_grid(.~treat)
+
+age_1_2 <-age_1+
+ facet_grid(.~treat)
+
+ggarrange(plotlist = list(weight_1, weight_1_2), 
+          nrow = 2)
+
+ggarrange(plotlist = list(height_1, height_1_2), 
+          nrow = 2)
+
+ggarrange(plotlist = list(BMI_1, BMI_1_2), 
+          nrow = 2)
+
+ggarrange(plotlist = list(age_1, age_1_2), 
+          nrow = 2)
+```
+
+#Визуализация по категориям (для пола и по странам)
+```{r}
+Result <- data %>%
+  group_by(Группы, nrAdvE, sex, treat) %>%
+  summarise(Total = length(nrAdvE)) 
+
+ggplot(Result) +
+  geom_col(aes(x = Группы, y = Total, fill = sex)) +
+  facet_grid(.~treat) +
+  theme_bw()
+```
+```{r}
+Result <- data %>%
+  group_by(Группы, nrAdvE, country, treat) %>%
+  summarise(Total = length(nrAdvE)) 
+
+ggplot(Result) +
+  geom_col(aes(x = Группы, y = Total, fill = country)) 
+  facet_grid(.~treat) +
+  theme_bw()
+```
+
+
+
+
+
+
+
+  
+
+
+
+## Задание  4.
+Выбрать и реализовать  методы однофакторного анализа для количественной оценки взаимосвязи между числом НЯ  и собранными признаками пациентов (помните, что взаимосвязь - это не только p-значения, но и доверительные интервалы!).
+
+## Строим qq-plots
+
+```{r}
+age_qqplot <- data %>%
+  group_by(treat) %>%
+  ggplot(aes(sample = age)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения возраста") +
+  facet_wrap(~treat) +
+  theme_classic()
+
+BMI_qqplot <- data %>%
+  group_by(treat) %>%
+  ggplot(aes(sample = BMI)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения BMI") +
+  facet_wrap(~treat) +
+  theme_classic()
+
+height_qqplot <- data %>%
+  group_by(treat) %>%
+  ggplot(aes(sample = height)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения роста") +
+  facet_wrap(~treat) +
+  theme_classic()
+
+weight_qqplot <- data %>%
+  group_by(treat) %>%
+  ggplot(aes(sample = weight)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения веса") +
+  facet_wrap(~treat) +
+  theme_classic()
+
+nrAdvE_qqplot <- data %>%
+  group_by(treat) %>%
+  ggplot(aes(sample = nrAdvE)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения nrAdvE") +
+  facet_wrap(~treat) +
+  theme_classic()
+
+ggsave(filename = "age_qqplot.png", plot = age_qqplot, 
+       width = 8, height = 6, dpi = 300)
+
+ggsave(filename = "BMI_qqplot.png", plot = BMI_qqplot, 
+       width = 8, height = 6, dpi = 300)
+
+ggsave(filename = "height_qqplot.png", plot = height_qqplot, 
+       width = 8, height = 6, dpi = 300)
+
+ggsave(filename = "weight_qqplot.png", plot = weight_qqplot, 
+       width = 8, height = 6, dpi = 300)
+
+ggsave(filename = "nrAdvE_qqplot.png", plot = nrAdvE_qqplot, 
+       width = 8, height = 6, dpi = 300)
+
+age_qqplot
+BMI_qqplot
+height_qqplot
+weight_qqplot
+
+```
+
+Без разбивки по treat 
+
+```{r}
+age_qqplot2 <- data %>%
+  ggplot(aes(sample = age)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения возраста") +
+  theme_classic()
+
+ggsave(filename = "age_qqplot2.png", plot = age_qqplot2, 
+       width = 8, height = 6, dpi = 300)
+
+BMI_qqplot2 <- data %>%
+  ggplot(aes(sample = BMI)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения ИМТ") +
+  theme_classic()
+
+ggsave(filename = "BMI_qqplot2.png", plot = BMI_qqplot2, 
+       width = 8, height = 6, dpi = 300)
+
+height_qqplot2 <- data %>%
+  ggplot(aes(sample = height)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения роста") +
+  theme_classic()
+
+ggsave(filename = "height_qqplot2.png", plot = height_qqplot2, 
+       width = 8, height = 6, dpi = 300)
+
+weight_qqplot2 <- data %>%
+  ggplot(aes(sample = weight)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения веса") +
+  theme_classic()
+
+ggsave(filename = "weight_qqplot2.png", plot = weight_qqplot2, 
+       width = 8, height = 6, dpi = 300)
+
+nrAdvE_qqplot2 <- data %>%
+  ggplot(aes(sample = nrAdvE)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(x = "Теоретические квантили", y = "Наблюдаемые квантили")+
+  ggtitle("QQ-график распределения кол-ва побочных эффектов") +
+  theme_classic()
+
+ggsave(filename = "nrAdvE_qqplot2.png", plot = nrAdvE_qqplot2, 
+       width = 8, height = 6, dpi = 300)
+
+age_qqplot2
+BMI_qqplot2
+height_qqplot2
+weight_qqplot2
+```
+
+
+## Делаем проверку на нормальность Шапиро-Уилка
+
+```{r}
+
+
+
+
+data %>%
+  group_by(treat) %>%
+  summarise(across(where(is.numeric), 
+                   ~ list(shapiro.test(.)), 
+                   .names = "shapiro_{col}")) %>%
+  pivot_longer(-treat, 
+               names_to = c(".value", "variable"), 
+               names_sep = "_") %>%
+  mutate(w_shapiro = map_dbl(shapiro, ~ .x$statistic),
+         p_value = map_dbl(shapiro, ~ .x$p.value)) %>%
+  select(-shapiro) %>%  # Удаляем столбец с объектом теста Шапиро
+  filter(!variable %in% c("rownames", "ID")) %>%  # Удаляем строки с variable = "rownames" или "ID"
+  mutate(p_value = formatC(p_value, digits = 3))%>%
+  group_by(variable) %>%  # Группируем по переменной variable
+  select(variable, everything()) %>%  # Делаем variable первым столбцом
+  arrange(variable)%>%
+  flextable() %>%
+  theme_box() %>%
+  align(align="center", part="all") %>%
+  merge_v(c("variable")) %>% 
+  add_footer_lines("Тест Шапиро-Уилка") %>% 
+  set_caption(caption = "Проверка на нормальность переменой разбитой на группы")
+```
+
+
+```{r}
+data %>%
+  summarise(across(where(is.numeric), 
+                   ~ list(shapiro.test(.)), 
+                   .names = "shapiro_{col}")) %>%
+  pivot_longer(cols = everything(),  # Преобразование всех столбцов
+               names_to = c(".value", "variable"), 
+               names_sep = "_") %>%
+  mutate(w_shapiro = map_dbl(shapiro, ~ .x$statistic),
+         p_value = map_dbl(shapiro, ~ .x$p.value)) %>%
+  select(-shapiro) %>%  # Удаляем столбец с объектом теста Шапиро
+  filter(!variable %in% c("rownames", "ID")) %>%  # Удаляем строки с variable = "rownames" или "ID"
+  mutate(p_value = formatC(p_value, digits = 3)) %>%
+  select(variable, everything()) %>%  # Делаем variable первым столбцом
+  arrange(variable) %>%
+  flextable() %>%
+  theme_box() %>%
+  align(align = "center", part = "all")
+```
+
+## Интерпретация проверки на нормальность
+
+Не нормально распределены:
+BMI
+nrAdvE
+
+Для них Краскелл-Уоллис
+
+Нормально:
+weight
+age
+height
+
+Для них Анова
+
+Изменено: для всего Краскелл-Уоллис
+
+По Treat:
+
+```{r}
+quant_vars <- c("weight", "age", "height", "BMI", "nrAdvE")
+kruskal_results <- map(quant_vars, ~ kruskal.test(as.formula(paste(.x, "~ treat")), data = data) %>%
+                         tidy() %>%
+                         mutate(variable = .x))
+kruskal_results_df <- bind_rows(kruskal_results)
+kruskal_results_df %>%
+  flextable() %>%
+  theme_box() %>%
+  align(align = "center", part = "all")
+```
+
+
+По treat
+
+Хи-квадрат
+
+```{r}
+# Хи-квадрат тест для переменной sex
+chi_square_sex <- chisq.test(table(data$treat, data$sex))
+
+# Хи-квадрат тест для переменной country
+chi_square_country <- chisq.test(table(data$treat, data$country))
+
+# Результаты тестов
+chi_square_sex
+chi_square_country
+
+```
+
+Превращаем количество исходов в факторную переменную
+
+
+
+Краскел-Уоллис
+
+```{r}
+quant_vars <- c("weight", "age", "height", "BMI")
+kruskal_results <- map(quant_vars, ~ kruskal.test(as.formula(paste(.x, "~ Группы")), data = data_group) %>%
+                         tidy() %>%
+                         mutate(variable = .x))
+kruskal_results2_df <- bind_rows(kruskal_results)
+kruskal_results2_df %>%
+  flextable() %>%
+  theme_box() %>%
+  align(align = "center", part = "all")
+```
+
+```{r}
+# Хи-квадрат тест для переменной sex
+chi_square_sex <- chisq.test(table(data_group$Группы, data$sex))
+
+# Хи-квадрат тест для переменной country
+chi_square_country <- chisq.test(table(data_group$Группы, data$country))
+
+# Хи-квадрат тест для переменной treat
+chi_square_treat <- chisq.test(table(data_group$Группы, data$treat))
+
+# Результаты тестов
+chi_square_sex
+chi_square_country
+chi_square_treat
+
+
+```
+
+Попарные сравнения т-тестом
+
+```{r}
+quant_vars <- c("weight", "age", "height", "BMI", "nrAdvE")
+# Проведение попарных t-тестов для каждой переменной, сгруппированной по treat
+pairwise_results <- map(quant_vars, ~ {
+  # Выполнение попарного t-теста, сгруппированного по treat
+  test_result <- pairwise.t.test(data_group[[.x]], data_group$treat, p.adjust.method = "none")
+  
+  # Преобразование результата в tibble
+  tidy_result <- as.data.frame(as.table(test_result$p.value)) %>%
+    filter(!is.na(Freq)) %>%  # Удаление значений NA
+    rename(group1 = Var1, group2 = Var2, p.value = Freq) %>%
+    mutate(variable = .x)  # добавление имени переменной
+  
+  return(tidy_result)
+})
+
+# Объединение результатов в один датафрейм
+pairwise_results_df <- bind_rows(pairwise_results)
+
+pairwise_results_df
+```
+Попарные сравнения т-тестом
+
+```{r}
+quant_vars <- c("weight", "age", "height", "BMI", "nrAdvE")
+# Проведение попарных t-тестов для каждой переменной, сгруппированной по treat
+pairwise_results <- map(quant_vars, ~ {
+  # Выполнение попарного t-теста, сгруппированного по treat
+  test_result <- pairwise.t.test(data[[.x]], data$treat, p.adjust.method = "none")
+  
+  # Преобразование результата в tibble
+  tidy_result <- as.data.frame(as.table(test_result$p.value)) %>%
+    filter(!is.na(Freq)) %>%  # Удаление значений NA
+    rename(group1 = Var1, group2 = Var2, p.value = Freq) %>%
+    mutate(variable = .x)  # добавление имени переменной
+  
+  return(tidy_result)
+})
+
+# Объединение результатов в один датафрейм
+pairwise_results_df <- bind_rows(pairwise_results)
+
+pairwise_results_df
+```
+
+рассмотрим, будет ли разный BMI в зависимости от adverse effects только у тех, кому давали препарат 1
+
+```{r}
+# Отфильтруем данные только для тех, у кого treat = "d1"
+data_filtered <- data %>% filter(treat == "d1")
+
+# Проведение попарных t-тестов для переменной BMI, сгруппированной по Группы
+bmi_pairwise_results <- pairwise.t.test(data_filtered$BMI, data_filtered$Группы, p.adjust.method = "holm")
+
+# Преобразование результата в удобный для чтения формат (таблица)
+bmi_pairwise_results_df <- as.data.frame(as.table(bmi_pairwise_results$p.value)) %>%
+  filter(!is.na(Freq)) %>%  # Удаление значений NA
+  rename(group1 = Var1, group2 = Var2, p.value = Freq)
+
+# Вывод результатов
+print(bmi_pairwise_results_df)
+```
+
+
+
+```{r}
+########## Служебные комментарии
+# data %>%
+#     # Выберем переменные для анализа
+#     select(  where(is.numeric) & -c(rownames, ID)) %>%
+# 
+#     # Переведём наши данные в длинный формат
+#     pivot_longer(!nrAdvE) %>%
+# 
+#     # Сгрупируем переменные по имени
+#     group_by(name) %>%
+# 
+#     # Рассчитаем значения р и R
+#     dplyr::summarise(
+#         R = cor.test(nrAdvE, value, method = "spearman")$estimate,
+#         p = cor.test(nrAdvE, value, method = "spearman")$p.value,
+#         # CI_min = cor.test(nrAdvE, value, method = "spearman")$
+#         # CI_max = cor.test(nrAdvE, value, method = "spearman")$
+#     ) %>%
+# 
+#     ungroup() %>%
+#     mutate(p.adj = p.adjust(p, method = "holm"))
+# 
+# 
+# 
+# # ########
+# # kruskal.test
+# 
+# data %>% 
+#     # Выберем переменные для анализа
+#     select( Группы, where(is.numeric) & -c(rownames, ID)) %>%
+# 
+#     # Переведём наши данные в длинный формат
+#     pivot_longer(!Группы) %>%
+# 
+#     # Сгрупируем переменные по имени
+#     group_by(name) %>%
+# 
+#     # Рассчитаем значения р и R
+#     dplyr::summarise(
+#         statistic = kruskal.test(value~Группы)$statistic %>% round(3),
+#         p = kruskal.test(value~Группы)$p.value %>% round(3),
+#         # CI_min = cor.test(nrAdvE, value, method = "spearman")$
+#         # CI_max = cor.test(nrAdvE, value, method = "spearman")$
+#     ) %>%
+# 
+#     ungroup() %>%
+#     # mutate(p.adj = p.adjust(p, method = "holm")) %>% 
+#    flextable() %>%
+#   theme_box() %>%
+#   color(color = "black") %>%
+#   align(align = "center", part = "all") %>% 
+#   add_footer_lines("Тест Краскела-Уоллиса") %>% 
+#   set_caption(caption = "Корреляция между НЯ и количественными переменными")
+# 
+# ```
+
+
