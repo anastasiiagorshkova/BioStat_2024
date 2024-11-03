@@ -1,7 +1,7 @@
 ---
 title: "ROC_curve"
 author: "Анастасия Горшкова"
-date: "2024-11-03"
+date: "2024-11-01"
 output: html_document
 ---
 
@@ -9,48 +9,27 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(flextable)
-library(dplyr)
-library(RColorBrewer)
-library(ggpubr)
-library(purrr)
-library(broom)
-library(corrplot)
+library(pROC)
 ```
 
-##  Загружаем датасет, чистим
+#  Проверяем датасет на наличие выбросов и пропущенных значений
 
 ```{r}
-data_trauma <- readxl::read_xlsx("data/trauma.xlsx") %>%
-    mutate(across(where(is.character), as.factor),
-           across(c(id, Death), as.factor),
-           Height = as.numeric(sub('"', '', Height)) * 2.54 / 100, # convert height to m
-           Weight = Weight / 2.2,
-           Hb = na_if(Hb, 0)
+df <- readxl::read_xlsx("data/trauma.xlsx") %>%
+    mutate(
+      across(c(id, Death), as.factor),
+      Height = as.numeric(sub('"', '', Height)) * 2.54 / 100, # convert height to m
+      Weight = Weight / 2.2,
+           Hb = na_if(Hb, 0),
+      across(where(is.character), as.factor)
            ) 
 
-df %>%
-  glimpse()
 summary(df)
 ```
 
-Заменяем на NA совсем нереалистичные значения и удаляем строки с ними
 
-```{r}
-df <- df %>%
-  mutate(
-    # Заменяем SBP и DBP на NA, если SPB меньше DBP
-    SBP = ifelse(SBP < DBP, NA, SBP),
-    DBP = ifelse(SBP < DBP, NA, DBP),
-    Height = ifelse(Height < 50, NA, Height),  # Заменяем height на NA, если меньше 50
-    Weight = ifelse(Weight < 20, NA, Weight),  # Заменяем weight на NA, если меньше 10
-    Hb = ifelse(Hb < 1, NA, Hb)
-    )
-df <- na.omit(df)
-summary(df)
-```
-##  1. Дайте описательную статистику для переменных, включённых в датасет. 
-Дополнительно 
-рассчитайте, у какого количества пациентов и в каком проценте случаев у пациентов был
+#  1. Описательная статистика для переменных
+Дополнительно рассчитайте, у какого количества пациентов и в каком проценте случаев у пациентов был
 снижен уровень гемоглобина? Используйте следующие референтные значения (Мужчины:
 13.5–16 г/дл, Женщины: 12–14 г/дл).
 
@@ -88,6 +67,8 @@ ci_max <- function(x) {
 
 ```
 
+Описательная статистика для количественных переменных
+
 ```{r}
 df %>%
   select(where(is.numeric)) %>%
@@ -101,11 +82,34 @@ df %>%
   merge_v("variable")
 ```
 
+
+Описательная статистика для факторных переменных 
+
+```{r}
+df %>%
+  select(-id, -Name) %>%
+  select(where(is.factor)) %>%
+  pivot_longer(cols = everything(), names_to = "Variable", values_to = "Value") %>%
+  group_by(Variable, Value) %>%
+  summarise(n = n(), .groups = 'drop') %>%
+  group_by(Variable) %>%
+  mutate(`%` = paste0(round((n / sum(n)) * 100, 2), " %") ) %>%
+  ungroup() %>%
+  select(Variable, Value, n, `%`) %>%
+  arrange(Variable, Value) %>%
+  flextable() %>%
+  theme_box() %>%
+  align(align = "center", part = "all") %>%
+  merge_v("Variable")
+```
+
+Расчёт количества и процента пациентов с пониженным уровнем гемоглобина
+
 ```{r}
 low_Hb_men <- 13.5
 low_Hb_women <- 12
 
-# Расчёт количества и процента пациентов с пониженным уровнем гемоглобина
+
 df %>%
   mutate(
     low_Hb = case_when(
@@ -121,49 +125,130 @@ df %>%
   )
 ```
 
-Результат: из 868 пациентов, оставшихся после фильтрации, у 31 из них наблюдается сниженный гемоглобин, что составляет 3,57%
+Результат: из 1024 пациентов у 458 из них наблюдается сниженный гемоглобин, что составляет 44,73%
 
 
-# Добавляем ИМТ
+# Расчет ИМТ пациентов
 
 Добавим параметр BMI в таблицу.
 
 ```{r}
-df$BMI <- round(df$Weight / ((df$Height/ 100)^2), 2)
+df$BMI <- round(df$Weight / ((df$Height)^2), 2)
 summary(df)
 ```
+Каков был средний (M (SD)) уровень
+ИМТ у пациентов, включённых в исследование? 
 
-
-```{r, fig.height=8, fig.width=24, message=FALSE}
-
-full_model <- glm(Страховка ~ Здоровье + Возраст + Ограничения + Пол + Брак + Самозанятость +
-                    Семья + Регион + Этничность + Образование, data = data_clean, family = binomial)
-
-main_model <- glm(Страховка ~ Возраст + Образование + Семья + Самозанятость + Регион,
-             data = data_clean, family = binomial)
-
-data_clean$full_model <- predict(full_model, type = "response")
-data_clean$main_model <- predict(main_model, type = "response")
-
-data_clean %>% 
-  select(Возраст ,full_model,main_model, Страховка) %>% 
-  pivot_longer(!Страховка, names_to = "Переменная") %>% 
-  group_by(Переменная) %>% 
-  summarise(AUC = roc(Страховка ~ value, ci = T)$ci[2] %>% signif(3),
-            "95% ДИ" = paste0(roc(Страховка ~ value, ci = T)$ci[1] %>% signif(3), 
-                              " - ", roc(Страховка ~ value, ci = T)$ci[3] %>% signif(3) )) %>% 
-  arrange(desc(AUC)) %>% 
-  flextable() %>% 
-  autofit() %>% 
-  theme_box()
-
-
-ggarrange(roc(Страховка ~ Возраст, data_clean) %>%
-            ggroc()+ labs(title = "ROC-кривая для возраста") + theme_custom,
-          roc(Страховка ~ full_model, data_clean) %>%
-           ggroc()+ labs(title = "ROC-кривая для полной модели") + theme_custom,
-            roc(Страховка ~ main_model, data_clean) %>%
-            ggroc()+ labs(title = "ROC-кривая для основной модели") + theme_custom,
-          nrow = 1, widths = c(1, 1, 1))
+```{r}
+sd_bmi <- sd(df$BMI)
+print(sd_bmi)
 ```
 
+
+Cредний (M (SD)) уровень ИМТ у пациентов, включённых в исследование, был 26.06 (+-2.57)
+
+Какая доля пациентов имела ожирение (ИМТ> 30)?
+
+```{r}
+df %>%
+  mutate(
+    obese = case_when(
+      BMI > 30 ~ TRUE,
+      TRUE ~ FALSE
+    )
+  ) %>%
+  summarize(
+    total_patients = n(),
+    obese_count = sum(obese),
+    obese_percent = (obese_count / total_patients) * 100
+  )
+```
+
+6.93% участников исследования страдали ожирением
+
+
+# ROC-кривая для предсказания летального исхода в течение 24 часов по переменной, характеризующей уровень гемоглобина?
+
+```{r}
+roc_curve_HB <- roc(df$Death, df$Hb)
+plot(roc_curve_HB, main = "ROC-кривая для наступления смерти по гемоглобину")
+```
+
+Кривая расположена над линией y=x, что означает, что предсказательная сила показателя гемоглобина выше, чем ожидается от рандомного показателя
+
+Чтобы судить о том, насколько этот показатель хорош, необходимо посчитать AUC
+
+Чему равна площадь под ROC-кривой, которую вы построили в вопросе 3? 
+Чему равен 95% двусторонний ДИ для площади под ROC-кривой, которую вы построили в вопросе 3?
+
+```{r}
+auc(roc_curve_HB)
+```
+
+Площадь под кривой равна 0.7078
+
+
+```{r}
+ci.auc(roc_curve_HB)
+```
+
+Довеерительный интервал равен 0.6763-0.7392
+
+AUC около 70% это достаточно хорошо, это означает, что у показателя Hb приемлемо хороший диагностический потенциал
+
+# ROC-анализ для показателя шкала комы Глазго
+Проведите ROC-анализ и определите, какое пороговое значение является оптимальным для
+предсказания летального исхода в течение 24 часов по шкале комы Глазго. Какой
+чувствительностью и специфичностью обладает данный порог?
+
+```{r}
+roc_curve_GSC <- roc(df$Death, df$GSC, quiet = TRUE)
+plot(roc_curve_GSC, main = "Предсказательная сила шкалы комы Глазго")
+```
+
+```{r}
+auc(roc_curve_GSC)
+ci.auc(roc_curve_GSC)
+```
+
+AUC = 0.9124, CI: 0.8959-0.9289
+
+Значит, что шкала Глазго - очень хороший и надежный показатель с высокой предсказательной способностью
+
+
+Оптимальный порог подбирали так, чтобы максимизировать показатель Youden's J statistic 
+(максимизирует сумму чувствительности и специфичности): 
+J = Sensitivity + Specificity − 1
+
+```{r}
+optimal_coords <- coords(roc_curve_GSC, "best", ret = c("threshold", "sensitivity", "specificity"), best.method = "youden")
+print(optimal_coords)
+```
+
+Анализ показал, что оптимальный порог = 7.5
+
+
+# РОС-анализ для всех количественных переменных
+Какая из количественных переменных в датасете (включая рассчитанный вами ранее ИМТ)
+обладает наибольшей площадью под ROC-кривой? Как вы можете интерпретировать это
+знание? Какая количественная переменная имеет наименьшую площадь?
+
+
+```{r}
+# Function to draw a ROC curve and calculate AUC
+roc_function <- function(predicted_var, var_name) {
+  roc_curve_var <- roc(df$Death, predicted_var, quiet = TRUE)
+  auc_var <- auc(roc_curve_var)
+  plot(roc_curve_var, main = paste("ROC Curve for", var_name, "\nAUC:", round(auc_var, 2)))
+  return(list(auc = auc_var, var_name = var_name))
+}
+
+# Apply the function to all numeric columns
+roc_results <- lapply(names(df)[sapply(df, is.numeric)], function(var_name) {
+  roc_function(df[[var_name]], var_name)
+})
+```
+
+
+
+Самое большое значение AUC = 0.93 для показателя FOUR, или балла по шкале комы FOUR при поступлении 
